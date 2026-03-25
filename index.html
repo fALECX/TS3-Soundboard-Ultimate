@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RP Soundboard Ultimate</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="titlebar">
+    <div class="titlebar-left">
+      <span class="titlebar-icon">🔊</span>
+      <span class="titlebar-title">RP Soundboard Ultimate</span>
+    </div>
+    <div class="titlebar-controls">
+      <button class="titlebar-btn" id="btn-minimize" title="Minimieren">─</button>
+      <button class="titlebar-btn" id="btn-maximize" title="Maximieren">□</button>
+      <button class="titlebar-btn titlebar-btn-close" id="btn-close" title="Schließen">✕</button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <section class="panel library-panel">
+        <div class="panel-header">
+          <div class="library-header-copy">
+            <p class="panel-kicker">Sounds</p>
+            <h2>Sounds</h2>
+          </div>
+          <div class="library-header-actions">
+            <span class="pill" id="library-count-pill">0</span>
+            <button class="icon-btn small" id="btn-toggle-library" title="Soundliste ein- oder ausklappen">⇤</button>
+          </div>
+        </div>
+
+        <div class="library-tools">
+          <input id="library-filter-input" type="text" placeholder="Library durchsuchen...">
+        </div>
+
+        <div class="library-list" id="library-list"></div>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <div class="toolbar">
+        <div class="search-bar">
+          <span class="search-icon">⌕</span>
+          <input type="text" id="search-input" placeholder="Sound suchen... (YouTube / Freesound)">
+          <div class="search-source-toggle">
+            <button class="source-btn active" data-source="all">Alle</button>
+            <button class="source-btn" data-source="youtube">
+              <img src="assets/youtube-logo.svg" alt="YouTube" class="source-logo">
+            </button>
+            <button class="source-btn" data-source="freesound">
+              <img src="assets/freesound-logo.svg" alt="Freesound" class="source-logo">
+            </button>
+          </div>
+        </div>
+        <button class="icon-btn" id="btn-import" title="Lokale Dateien importieren">📁</button>
+        <button class="icon-btn" id="btn-settings" title="Einstellungen">⚙️</button>
+      </div>
+
+      <div class="search-results" id="search-results">
+        <div class="search-results-header">
+          <span id="search-results-title">Suchergebnisse</span>
+          <button class="search-close-btn" id="search-close">✕</button>
+        </div>
+        <div class="search-warnings" id="search-warnings"></div>
+        <div class="search-loading" id="search-loading">
+          <div class="spinner"></div>
+          <span>Suche läuft...</span>
+        </div>
+        <div class="search-results-list" id="search-results-list"></div>
+      </div>
+
+      <section class="panel board-shell">
+        <div class="board-toolbar">
+          <div class="board-toolbar-copy">
+            <h2 class="board-title" id="board-title">Main Board</h2>
+          </div>
+          <div class="board-toolbar-controls">
+            <select id="board-select" class="board-select"></select>
+            <select id="grid-size-select" class="board-select">
+              <option value="3x2">3×2</option>
+              <option value="4x3">4×3</option>
+              <option value="4x4">4×4</option>
+              <option value="5x4">5×4</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid-container" id="grid-container"></div>
+      </section>
+
+      <section class="panel now-playing" id="now-playing">
+        <div class="now-playing-info">
+          <div class="now-playing-label">Now Playing</div>
+          <div class="now-playing-name" id="now-playing-name">Kein Sound aktiv</div>
+          <div class="now-playing-meta" id="now-playing-meta">0 aktive Wiedergaben</div>
+        </div>
+        <div class="now-playing-controls">
+          <button class="btn-secondary" id="btn-replay-last">Replay</button>
+          <button class="btn-secondary" id="btn-stop-active">Stop</button>
+          <input type="range" id="volume-slider" min="0" max="100" value="80">
+          <span id="volume-label">80%</span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="context-menu" id="context-menu">
+    <button class="ctx-item" data-action="play">▶ Abspielen</button>
+    <button class="ctx-item" data-action="edit">✏️ Bearbeiten</button>
+    <button class="ctx-item" data-action="hotkey">⌨️ Hotkey setzen</button>
+    <div class="ctx-divider"></div>
+    <button class="ctx-item" data-action="remove">➖ Vom Board entfernen</button>
+    <button class="ctx-item ctx-item-danger" data-action="delete">🗑 Aus Library löschen</button>
+  </div>
+
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>⚙️ Einstellungen</h2>
+        <button class="modal-close" id="settings-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field-group">
+          <label for="output-device">Audio Output</label>
+          <select id="output-device">
+            <option value="default">Standard</option>
+          </select>
+          <p class="field-hint">Für TeamSpeak meist VB-Cable / CABLE Input auswählen.</p>
+        </div>
+
+        <div class="field-group">
+          <label class="switch-row">
+            <span>Globale Hotkeys aktiv</span>
+            <input type="checkbox" id="global-hotkeys-toggle">
+          </label>
+        </div>
+
+        <div class="field-group">
+          <label for="freesound-api-key">Freesound API Key</label>
+          <input type="password" id="freesound-api-key" placeholder="API Key einfügen...">
+          <div class="inline-actions">
+            <button class="btn-secondary" id="btn-open-freesound-api">API Key holen</button>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label>YouTube Status</label>
+          <div class="status-card" id="youtube-status-card">
+            <div class="status-card-title" id="youtube-status-title">Prüfe yt-dlp...</div>
+            <div class="status-card-body" id="youtube-status-body"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="sound-modal">
+    <div class="modal large">
+      <div class="modal-header">
+        <h2 id="sound-modal-title">Sound bearbeiten</h2>
+        <button class="modal-close" id="sound-modal-close">✕</button>
+      </div>
+      <div class="modal-body two-column">
+        <div class="field-group">
+          <label for="sound-name-input">Name</label>
+          <input type="text" id="sound-name-input">
+        </div>
+        <div class="field-group">
+          <label for="sound-emoji-input">Emoji</label>
+          <input type="text" id="sound-emoji-input" maxlength="4">
+        </div>
+        <div class="field-group full-width">
+          <label for="sound-tags-input">Tags</label>
+          <input type="text" id="sound-tags-input" placeholder="comma, separated, tags">
+        </div>
+        <div class="field-group">
+          <label class="switch-row">
+            <span>Favorit</span>
+            <input type="checkbox" id="sound-favorite-toggle">
+          </label>
+        </div>
+        <div class="field-group">
+          <label class="switch-row">
+            <span>Loop</span>
+            <input type="checkbox" id="sound-loop-toggle">
+          </label>
+        </div>
+        <div class="field-group full-width">
+          <label for="sound-gain-slider">Gain</label>
+          <div class="range-row">
+            <input type="range" id="sound-gain-slider" min="0" max="150" value="100">
+            <span id="sound-gain-label">100%</span>
+          </div>
+        </div>
+        <div class="field-group">
+          <label for="sound-trim-start-input">Trim Start (ms)</label>
+          <input type="number" id="sound-trim-start-input" min="0" step="50">
+        </div>
+        <div class="field-group">
+          <label for="sound-trim-end-input">Trim End (ms)</label>
+          <input type="number" id="sound-trim-end-input" min="0" step="50">
+        </div>
+        <div class="field-group">
+          <label for="sound-playback-mode">Playback Mode</label>
+          <select id="sound-playback-mode">
+            <option value="interrupt">Interrupt</option>
+            <option value="restart">Restart</option>
+            <option value="mix">Mix</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label for="sound-trigger-mode">Trigger Mode</label>
+          <select id="sound-trigger-mode">
+            <option value="oneshot">One-shot</option>
+            <option value="toggle">Toggle</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary danger" id="sound-delete-btn">Aus Library löschen</button>
+        <div class="modal-footer-right">
+          <button class="btn-secondary" id="sound-cancel-btn">Abbrechen</button>
+          <button class="btn-primary" id="sound-save-btn">Speichern</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="board-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="board-modal-title">Board</h2>
+        <button class="modal-close" id="board-modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field-group">
+          <label for="board-name-input">Board Name</label>
+          <input type="text" id="board-name-input" placeholder="z.B. Polizei, Civil, Ambience">
+        </div>
+        <div class="field-group">
+          <label>Board Hotkey</label>
+          <div class="inline-actions">
+            <button class="btn-secondary" id="btn-board-hotkey">Hotkey setzen</button>
+            <span class="hotkey-pill" id="board-hotkey-display">Keiner</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div></div>
+        <div class="modal-footer-right">
+          <button class="btn-secondary" id="board-cancel-btn">Abbrechen</button>
+          <button class="btn-primary" id="board-save-btn">Speichern</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="confirm-title">Bestätigen</h2>
+        <button class="modal-close" id="confirm-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="confirm-body" id="confirm-body"></p>
+      </div>
+      <div class="modal-footer">
+        <div></div>
+        <div class="modal-footer-right">
+          <button class="btn-secondary" id="confirm-cancel-btn">Abbrechen</button>
+          <button class="btn-primary danger-fill" id="confirm-submit-btn">Löschen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="hotkey-modal">
+    <div class="modal small">
+      <div class="modal-header">
+        <h2>⌨️ Hotkey setzen</h2>
+        <button class="modal-close" id="hotkey-modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="field-hint">Drücke eine Taste oder Tastenkombination.</p>
+        <div class="hotkey-capture-area" id="hotkey-capture-area" tabindex="0">
+          <span id="hotkey-captured-display">Taste drücken...</span>
+        </div>
+        <p class="hotkey-error" id="hotkey-error"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="hotkey-clear-btn">Hotkey löschen</button>
+        <div class="modal-footer-right">
+          <button class="btn-secondary" id="hotkey-cancel-btn">Abbrechen</button>
+          <button class="btn-primary" id="hotkey-save-btn">Speichern</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wizard-overlay" id="wizard-overlay">
+    <div class="wizard">
+      <div class="wizard-step active" id="wizard-step-1">
+        <div class="wizard-icon">🔊</div>
+        <h1>RP Soundboard Ultimate</h1>
+        <p>Boards, Library, globale Hotkeys und Audio-Routing für TeamSpeak an einem Ort.</p>
+        <button class="btn-primary" id="wizard-next-1">Einrichtung starten</button>
+      </div>
+      <div class="wizard-step" id="wizard-step-2">
+        <h2>Freesound API</h2>
+        <p>Optional, aber empfohlen für Freesound-Suche und direkte Imports.</p>
+        <input type="text" id="wizard-api-key-input" placeholder="Freesound API Key">
+        <div class="wizard-actions">
+          <button class="btn-secondary" id="wizard-open-freesound">API Seite öffnen</button>
+          <button class="btn-secondary" id="wizard-skip-2">Überspringen</button>
+          <button class="btn-primary" id="wizard-next-2">Weiter</button>
+        </div>
+      </div>
+      <div class="wizard-step" id="wizard-step-3">
+        <h2>TeamSpeak Routing</h2>
+        <p>Wähle im Soundboard den VB-Cable Output und in TeamSpeak den passenden CABLE Input für sauberes Routing.</p>
+        <div class="wizard-actions">
+          <button class="btn-secondary" id="wizard-open-vbcable">VB-Cable öffnen</button>
+          <button class="btn-primary" id="wizard-finish">Los geht's</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <span id="toast-message">Info</span>
+  </div>
+
+  <script src="renderer-state.js"></script>
+  <script src="renderer-playback.js"></script>
+  <script src="renderer-ui.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

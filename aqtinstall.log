@@ -1,0 +1,73 @@
+2026-03-25 22:09:28,044 - aqt.helper - DEBUG - helper 86876 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/Updates.xml.sha256
+2026-03-25 22:09:37,342 - aqt.main - INFO - installer 85116 aqtinstall(aqt) v3.3.0 on Python 3.12.10 [CPython MSC v.1943 64 bit (AMD64)]
+2026-03-25 22:09:37,342 - aqt.helper - DEBUG - helper 85116 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/Updates.xml.sha256
+2026-03-25 22:09:38,374 - aqt.helper - DEBUG - helper 85116 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/extensions/qtwebengine/683/msvc2022_64/Updates.xml.sha256
+2026-03-25 22:09:39,307 - aqt.archives - INFO - archives 85116 Found extension qtwebengine
+2026-03-25 22:09:39,307 - aqt.helper - DEBUG - helper 85116 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/extensions/qtpdf/683/msvc2022_64/Updates.xml.sha256
+2026-03-25 22:09:40,343 - aqt.archives - INFO - archives 85116 Found extension qtpdf
+2026-03-25 22:09:40,856 - aqt.helper - DEBUG - helper 82472 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308qtbase-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z.sha256
+2026-03-25 22:09:41,286 - aqt.helper - INFO - helper 82472 Downloading qtbase...
+2026-03-25 22:09:41,286 - aqt.installer - DEBUG - installer 82472 Download URL: https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308qtbase-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z
+2026-03-25 22:09:41,728 - aqt.helper - DEBUG - helper 82472 Asked to redirect(302) to: https://ftp.fau.de/qtproject/online/qtsdkrepository/windows_x86/desktop/qt6_683/qt6_683/qt.qt6.683.win64_msvc2022_64/6.8.3-0-202503201308qtbase-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z
+2026-03-25 22:09:41,728 - aqt.helper - INFO - helper 82472 Redirected: ftp.fau.de
+2026-03-25 22:09:49,268 - aqt.installer - INFO - installer 82472 Finished installation of qtbase-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z in 8.41429510
+2026-03-25 22:09:49,392 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\bin\qmake.exe
+2026-03-25 22:09:49,396 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Concurrent.prl
+2026-03-25 22:09:49,401 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Concurrentd.prl
+2026-03-25 22:09:49,406 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Core.prl
+2026-03-25 22:09:49,411 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Cored.prl
+2026-03-25 22:09:49,414 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6DBus.prl
+2026-03-25 22:09:49,418 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6DBusd.prl
+2026-03-25 22:09:49,421 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6DeviceDiscoverySupport.prl
+2026-03-25 22:09:49,425 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6DeviceDiscoverySupportd.prl
+2026-03-25 22:09:49,430 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6EntryPoint.prl
+2026-03-25 22:09:49,433 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6EntryPointd.prl
+2026-03-25 22:09:49,437 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6ExampleIcons.prl
+2026-03-25 22:09:49,441 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6ExampleIconsd.prl
+2026-03-25 22:09:49,445 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6ExamplesAssetDownloader.prl
+2026-03-25 22:09:49,448 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6ExamplesAssetDownloaderd.prl
+2026-03-25 22:09:49,452 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6FbSupport.prl
+2026-03-25 22:09:49,458 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6FbSupportd.prl
+2026-03-25 22:09:49,461 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Gui.prl
+2026-03-25 22:09:49,464 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Guid.prl
+2026-03-25 22:09:49,468 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Network.prl
+2026-03-25 22:09:49,472 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Networkd.prl
+2026-03-25 22:09:49,476 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6OpenGL.prl
+2026-03-25 22:09:49,479 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6OpenGLd.prl
+2026-03-25 22:09:49,483 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6OpenGLWidgets.prl
+2026-03-25 22:09:49,487 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6OpenGLWidgetsd.prl
+2026-03-25 22:09:49,491 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6PrintSupport.prl
+2026-03-25 22:09:49,494 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6PrintSupportd.prl
+2026-03-25 22:09:49,498 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Sql.prl
+2026-03-25 22:09:49,502 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Sqld.prl
+2026-03-25 22:09:49,505 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Test.prl
+2026-03-25 22:09:49,509 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Testd.prl
+2026-03-25 22:09:49,512 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Widgets.prl
+2026-03-25 22:09:49,516 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Widgetsd.prl
+2026-03-25 22:09:49,520 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Xml.prl
+2026-03-25 22:09:49,524 - aqt.updater - INFO - updater 85116 Patching C:\Qt\6.8.3\msvc2022_64\lib\Qt6Xmld.prl
+2026-03-25 22:09:49,528 - aqt.main - INFO - installer 85116 Finished installation
+2026-03-25 22:09:49,528 - aqt.main - INFO - installer 85116 Time elapsed: 12.18698650 second
+2026-03-25 22:17:39,209 - aqt.helper - DEBUG - helper 69164 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw/Updates.xml.sha256
+2026-03-25 22:17:55,707 - aqt.helper - DEBUG - helper 87996 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt5_5152/Updates.xml.sha256
+2026-03-25 22:17:56,652 - aqt.helper - DEBUG - helper 87996 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt5_5152_wasm/Updates.xml.sha256
+2026-03-25 22:18:02,824 - aqt.main - INFO - installer 74452 aqtinstall(aqt) v3.3.0 on Python 3.12.10 [CPython MSC v.1943 64 bit (AMD64)]
+2026-03-25 22:18:02,824 - aqt.helper - DEBUG - helper 74452 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt5_5152/Updates.xml.sha256
+2026-03-25 22:18:04,093 - aqt.helper - DEBUG - helper 89644 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt5_5152/qt.qt5.5152.win64_mingw81/5.15.2-0-202011130602qtbase-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z.sha256
+2026-03-25 22:18:04,561 - aqt.helper - INFO - helper 89644 Downloading qtbase...
+2026-03-25 22:18:04,561 - aqt.installer - DEBUG - installer 89644 Download URL: https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/qt5_5152/qt.qt5.5152.win64_mingw81/5.15.2-0-202011130602qtbase-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z
+2026-03-25 22:18:05,001 - aqt.helper - DEBUG - helper 89644 Asked to redirect(302) to: https://ftp.fau.de/qtproject/online/qtsdkrepository/windows_x86/desktop/qt5_5152/qt.qt5.5152.win64_mingw81/5.15.2-0-202011130602qtbase-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z
+2026-03-25 22:18:05,001 - aqt.helper - INFO - helper 89644 Redirected: ftp.fau.de
+2026-03-25 22:18:11,922 - aqt.installer - INFO - installer 89644 Finished installation of qtbase-Windows-Windows_10-Mingw-Windows-Windows_10-X86_64.7z in 7.83030750
+2026-03-25 22:18:12,191 - aqt.updater - INFO - updater 74452 Patching C:\Qt\5.15.2\mingw81_64\bin\qmake.exe
+2026-03-25 22:18:12,650 - aqt.main - ERROR - installer 74452 Updater caused an IO error: [Errno 13] Permission denied: 'C:\\Qt\\5.15.2\\mingw81_64\\bin\\qmake.exe'
+2026-03-25 22:18:24,257 - aqt.main - INFO - installer 82220 aqtinstall(aqt) v3.3.0 on Python 3.12.10 [CPython MSC v.1943 64 bit (AMD64)]
+2026-03-25 22:18:24,257 - aqt.helper - DEBUG - helper 82220 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw/Updates.xml.sha256
+2026-03-25 22:18:25,582 - aqt.helper - DEBUG - helper 75752 Attempt to download checksum at https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw/qt.tools.win64_mingw810/8.1.0-1-202004170606x86_64-8.1.0-release-posix-seh-rt_v6-rev0.7z.sha256
+2026-03-25 22:18:26,013 - aqt.helper - INFO - helper 75752 Downloading qt.tools.win64_mingw810...
+2026-03-25 22:18:26,014 - aqt.installer - DEBUG - installer 75752 Download URL: https://download.qt.io/online/qtsdkrepository/windows_x86/desktop/tools_mingw/qt.tools.win64_mingw810/8.1.0-1-202004170606x86_64-8.1.0-release-posix-seh-rt_v6-rev0.7z
+2026-03-25 22:18:26,449 - aqt.helper - DEBUG - helper 75752 Asked to redirect(302) to: https://ftp.fau.de/qtproject/online/qtsdkrepository/windows_x86/desktop/tools_mingw/qt.tools.win64_mingw810/8.1.0-1-202004170606x86_64-8.1.0-release-posix-seh-rt_v6-rev0.7z
+2026-03-25 22:18:26,449 - aqt.helper - INFO - helper 75752 Redirected: ftp.fau.de
+2026-03-25 22:18:40,112 - aqt.installer - INFO - installer 75752 Finished installation of x86_64-8.1.0-release-posix-seh-rt_v6-rev0.7z in 14.53106720
+2026-03-25 22:18:40,189 - aqt.main - INFO - installer 82220 Finished installation
+2026-03-25 22:18:40,189 - aqt.main - INFO - installer 82220 Time elapsed: 15.93193160 second
