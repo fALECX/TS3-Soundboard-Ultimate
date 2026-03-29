@@ -1,0 +1,7 @@
+Name = RP Soundboard Ultimate
+Type = Plugin
+Author = OpenAI Codex
+Version = @RPSU_PACKAGE_VERSION@
+Platforms = win64
+Description = Native TeamSpeak 3 soundboard plugin with direct captured-voice injection.
+This package installs through TeamSpeak's built-in package installer, the same way as classic TS3 plugins.

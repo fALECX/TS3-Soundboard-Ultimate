@@ -19,6 +19,8 @@ find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Widgets Network)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets Network)
 
 set(PLUGIN_NAME "rp_soundboard_ultimate")
+set(RPSU_PLUGINFILE_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/release" CACHE PATH "Output directory for the final ts3_plugin package")
+option(RPSU_MAKE_PLUGIN_FILE "Create the ts3_plugin file" OFF)
 
 set(SOURCES
   src/plugin.cpp
@@ -105,4 +107,77 @@ target_compile_definitions(rpsu_ui_preview
 
 if(MSVC)
   target_link_options(rpsu_ui_preview PRIVATE /MANIFEST:NO)
+endif()
+
+set(RPSU_PACKAGE_VERSION "${PROJECT_VERSION}")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+  execute_process(
+    COMMAND git describe --tags
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE RPSU_GIT_VERSION_RAW
+    ERROR_QUIET
+    RESULT_VARIABLE RPSU_GIT_DESCRIBE_RESULT
+  )
+  if(RPSU_GIT_DESCRIBE_RESULT EQUAL 0)
+    string(STRIP "${RPSU_GIT_VERSION_RAW}" RPSU_PACKAGE_VERSION)
+  endif()
+endif()
+
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/deploy")
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/package.ini.in"
+  "${CMAKE_CURRENT_SOURCE_DIR}/deploy/package.ini"
+  @ONLY
+)
+
+install(TARGETS ${PLUGIN_NAME}
+  RUNTIME DESTINATION plugins
+  LIBRARY DESTINATION plugins
+)
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/deploy/package.ini" DESTINATION .)
+
+if(TARGET Qt${QT_VERSION_MAJOR}::qmake)
+  get_target_property(RPSU_QMAKE_EXE Qt${QT_VERSION_MAJOR}::qmake IMPORTED_LOCATION)
+  get_filename_component(RPSU_QT_BIN_DIR "${RPSU_QMAKE_EXE}" DIRECTORY)
+  get_filename_component(RPSU_QT_ROOT_DIR "${RPSU_QT_BIN_DIR}/.." ABSOLUTE)
+
+  if(QT_VERSION_MAJOR EQUAL 5)
+    install(FILES
+      "${RPSU_QT_BIN_DIR}/Qt5Core.dll"
+      "${RPSU_QT_BIN_DIR}/Qt5Gui.dll"
+      "${RPSU_QT_BIN_DIR}/Qt5Widgets.dll"
+      DESTINATION plugins
+      OPTIONAL
+    )
+  else()
+    install(FILES
+      "${RPSU_QT_BIN_DIR}/Qt6Core.dll"
+      "${RPSU_QT_BIN_DIR}/Qt6Gui.dll"
+      "${RPSU_QT_BIN_DIR}/Qt6Widgets.dll"
+      DESTINATION plugins
+      OPTIONAL
+    )
+  endif()
+
+  install(FILES
+    "${RPSU_QT_ROOT_DIR}/plugins/platforms/qwindows.dll"
+    DESTINATION plugins/platforms
+    OPTIONAL
+  )
+endif()
+
+get_filename_component(RPSU_COMPILER_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+install(FILES
+  "${RPSU_COMPILER_BIN_DIR}/libstdc++-6.dll"
+  "${RPSU_COMPILER_BIN_DIR}/libgcc_s_seh-1.dll"
+  "${RPSU_COMPILER_BIN_DIR}/libwinpthread-1.dll"
+  DESTINATION plugins
+  OPTIONAL
+)
+
+if(RPSU_MAKE_PLUGIN_FILE)
+  install(CODE "set(RPSU_PLUGINFILE_OUTPUT_DIR \"${RPSU_PLUGINFILE_OUTPUT_DIR}\")")
+  install(CODE "set(RPSU_PLUGIN_PACKAGE_VERSION \"${RPSU_PACKAGE_VERSION}\")")
+  install(SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/create-pluginfile.cmake")
 endif()
