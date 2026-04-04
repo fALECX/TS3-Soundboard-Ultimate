@@ -1,66 +1,19 @@
 {
   "name": "rp-soundboard-ultimate",
-  "version": "0.1.0",
-  "description": "Open-source soundboard for TeamSpeak 3 / GTA 5 RP with YouTube and Freesound search.",
-  "main": "main.js",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Native TeamSpeak 3 soundboard plugin for Windows.",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --dev",
-    "test": "node --test tests/*.test.js",
-    "validate:release": "node scripts/validate-release.js",
-    "dist": "npm run validate:release && electron-builder",
-    "pack": "npm run validate:release && electron-builder --dir"
+    "test": "node --test tests/smoke.test.js",
+    "validate:release": "node scripts/validate-release.js"
   },
   "author": "RP Soundboard Ultimate",
   "license": "MIT",
   "keywords": [
-    "gta5",
-    "gta-rp",
-    "soundboard",
+    "ts3",
     "teamspeak",
-    "electron"
-  ],
-  "dependencies": {},
-  "devDependencies": {
-    "electron": "^33.0.0",
-    "electron-builder": "^26.8.1"
-  },
-  "releaseConfig": {
-    "youtubeMode": "runtime-optional"
-  },
-  "build": {
-    "appId": "com.rp.soundboard.ultimate",
-    "productName": "RP Soundboard Ultimate",
-    "win": {
-      "target": "nsis",
-      "signAndEditExecutable": false
-    },
-    "nsis": {
-      "oneClick": true,
-      "shortcutName": "RP Soundboard Ultimate"
-    },
-    "extraResources": [
-      {
-        "from": "resources",
-        "to": ".",
-        "filter": [
-          "yt-dlp.exe"
-        ]
-      }
-    ],
-    "files": [
-      "main.js",
-      "preload.js",
-      "renderer.js",
-      "renderer-state.js",
-      "renderer-playback.js",
-      "renderer-ui.js",
-      "index.html",
-      "styles.css",
-      "lib/**",
-      "assets/**",
-      "sounds/**",
-      "resources/.gitkeep"
-    ]
-  }
+    "soundboard",
+    "plugin",
+    "windows"
+  ]
 }

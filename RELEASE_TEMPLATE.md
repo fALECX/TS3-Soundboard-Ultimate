@@ -11,24 +11,26 @@
 - Bug fix 1
 
 ### GTA 5 RP / TeamSpeak Notes
-- Any routing/setup changes users need to apply.
+- Any TeamSpeak install or plugin-loading notes.
 - Any hotkey/config migration notes.
 
 ### Breaking Changes
 - List any breaking changes, or write `None`.
 
 ### Security
-- `npm audit` status and important dependency notes.
+- Dependency and packaging notes relevant to the release.
 
 ### Installer
-- Windows NSIS installer artifact name(s):
-  - `...`
+- TeamSpeak package artifact name(s):
+  - `...ts3_plugin`
+  - `package_inst.exe` wizard path verified
 
 ### Checks Performed
-- [ ] Clean install build (`npm ci`)
-- [ ] Packaging (`npm run dist`)
-- [ ] App launch + config persistence
-- [ ] Search/download/playback smoke test
+- [ ] Clean configure/build (`cmake -S` / `cmake --build`)
+- [ ] Packaging (`cmake --build` + `cmake --install`)
+- [ ] Plugin loads in TeamSpeak
+- [ ] Config persistence
+- [ ] Playback/injection smoke test
 
 ### Legal Notes
 - Users are responsible for rights-compliant audio usage.

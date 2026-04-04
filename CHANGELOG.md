@@ -2,19 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.2.0] - 2026-04-04
 
 ### Added
-- Open-source documentation pack (`README`, `LICENSE`, `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`, release template).
-- Publish/release guidance for GTA 5 RP and TeamSpeak workflows.
+- Native TeamSpeak 3 plugin runtime for Windows.
+- CMake-based plugin build and `.ts3_plugin` packaging flow.
+- TeamSpeak package installer wizard distribution path.
+- JSON state storage and first-run migration from legacy Electron data.
+- Direct captured-voice audio injection path.
+- TeamSpeak-owned Qt soundboard window and plugin menu entry.
 
 ### Changed
-- Runtime writable paths moved from project directory to Electron user data path.
-- Build config hardened to avoid hard dependency on missing icon assets.
-- Optional bundled `yt-dlp.exe` handling documented and packaged from `resources/` if present.
+- Release metadata now points to the TS3 plugin package instead of Electron.
+- Repo documentation now matches the real TeamSpeak installer flow.
+- Versioning is aligned across CMake, package metadata, and release validation.
 
 ### Removed
-- Bundled sample sounds from repository default state.
+- Electron builder release surface from the publish path.
+- NSIS installer references from the release story.
 
 ## [0.1.0] - 2026-03-14
 
