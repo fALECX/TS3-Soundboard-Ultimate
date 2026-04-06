@@ -3,5 +3,5 @@ Type = Plugin
 Author = OpenAI Codex
 Version = @RPSU_PACKAGE_VERSION@
 Platforms = win64
-Description = Native TeamSpeak 3 soundboard plugin with direct captured-voice injection.
+Description = Safe-mode TeamSpeak plugin shim for RP Soundboard Ultimate while the native Qt runtime is disabled.
 This package installs through TeamSpeak's built-in package installer, the same way as classic TS3 plugins.

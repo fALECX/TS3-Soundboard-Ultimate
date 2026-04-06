@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
-project(rp_soundboard_ultimate_ts3_plugin VERSION 0.2.0 LANGUAGES CXX)
+project(rp_soundboard_ultimate_ts3_plugin VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,10 +19,12 @@ find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Core Widgets Network)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Widgets Network)
 
 set(PLUGIN_NAME "rp_soundboard_ultimate")
+set(PLUGIN_RUNTIME_NAME "rp_soundboard_ultimate_runtime")
+set(RPSU_PLUGIN_SUPPORT_SUBDIR "plugins/rp_soundboard_ultimate")
 set(RPSU_PLUGINFILE_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/release" CACHE PATH "Output directory for the final ts3_plugin package")
 option(RPSU_MAKE_PLUGIN_FILE "Create the ts3_plugin file" OFF)
 
-set(SOURCES
+set(PLUGIN_RUNTIME_SOURCES
   src/plugin.cpp
   src/core/models.cpp
   src/core/storage.cpp
@@ -41,19 +43,14 @@ set(HEADERS
   src/ui/main_window.h
 )
 
-add_library(${PLUGIN_NAME} SHARED ${SOURCES} ${HEADERS})
+add_library(${PLUGIN_NAME} SHARED
+  src/plugin_loader.c
+)
 
 target_include_directories(${PLUGIN_NAME}
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/pluginsdk/include
-)
-
-target_link_libraries(${PLUGIN_NAME}
-  PRIVATE
-    Qt${QT_VERSION_MAJOR}::Core
-    Qt${QT_VERSION_MAJOR}::Widgets
-    Qt${QT_VERSION_MAJOR}::Network
 )
 
 target_compile_definitions(${PLUGIN_NAME}
@@ -64,12 +61,46 @@ target_compile_definitions(${PLUGIN_NAME}
 
 if(MSVC)
   target_link_options(${PLUGIN_NAME} PRIVATE /MANIFEST:NO)
+else()
+  target_link_options(${PLUGIN_NAME} PRIVATE -static-libgcc -static-libstdc++)
 endif()
 
 set_target_properties(${PLUGIN_NAME} PROPERTIES
+  AUTOMOC OFF
   PREFIX ""
   OUTPUT_NAME "rp_soundboard_ultimate_win64"
   SUFFIX ".dll"
+)
+
+add_library(${PLUGIN_RUNTIME_NAME} SHARED ${PLUGIN_RUNTIME_SOURCES} ${HEADERS})
+
+target_include_directories(${PLUGIN_RUNTIME_NAME}
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/pluginsdk/include
+)
+
+target_link_libraries(${PLUGIN_RUNTIME_NAME}
+  PRIVATE
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Widgets
+    Qt${QT_VERSION_MAJOR}::Network
+)
+
+target_compile_definitions(${PLUGIN_RUNTIME_NAME}
+  PRIVATE
+    QT_NO_KEYWORDS
+    NOMINMAX
+)
+
+if(MSVC)
+  target_link_options(${PLUGIN_RUNTIME_NAME} PRIVATE /MANIFEST:NO)
+endif()
+
+set_target_properties(${PLUGIN_RUNTIME_NAME} PROPERTIES
+  PREFIX ""
+  OUTPUT_NAME "rp_soundboard_ultimate_runtime"
+  SUFFIX ".bin"
 )
 
 add_executable(rpsu_ui_preview
@@ -135,6 +166,11 @@ install(TARGETS ${PLUGIN_NAME}
   LIBRARY DESTINATION plugins
 )
 
+install(TARGETS ${PLUGIN_RUNTIME_NAME}
+  RUNTIME DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR}
+  LIBRARY DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR}
+)
+
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/deploy/package.ini" DESTINATION .)
 
 if(TARGET Qt${QT_VERSION_MAJOR}::qmake)
@@ -147,7 +183,7 @@ if(TARGET Qt${QT_VERSION_MAJOR}::qmake)
       "${RPSU_QT_BIN_DIR}/Qt5Core.dll"
       "${RPSU_QT_BIN_DIR}/Qt5Gui.dll"
       "${RPSU_QT_BIN_DIR}/Qt5Widgets.dll"
-      DESTINATION plugins
+      DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR}
       OPTIONAL
     )
   else()
@@ -155,14 +191,14 @@ if(TARGET Qt${QT_VERSION_MAJOR}::qmake)
       "${RPSU_QT_BIN_DIR}/Qt6Core.dll"
       "${RPSU_QT_BIN_DIR}/Qt6Gui.dll"
       "${RPSU_QT_BIN_DIR}/Qt6Widgets.dll"
-      DESTINATION plugins
+      DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR}
       OPTIONAL
     )
   endif()
 
   install(FILES
     "${RPSU_QT_ROOT_DIR}/plugins/platforms/qwindows.dll"
-    DESTINATION plugins/platforms
+    DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR}/platforms
     OPTIONAL
   )
 endif()
@@ -172,7 +208,7 @@ install(FILES
   "${RPSU_COMPILER_BIN_DIR}/libstdc++-6.dll"
   "${RPSU_COMPILER_BIN_DIR}/libgcc_s_seh-1.dll"
   "${RPSU_COMPILER_BIN_DIR}/libwinpthread-1.dll"
-  DESTINATION plugins
+  DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR}
   OPTIONAL
 )
 

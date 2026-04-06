@@ -9,7 +9,7 @@ const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 const cmake = fs.readFileSync(cmakeListsPath, 'utf8');
 
 const versionMatch = cmake.match(
-  /project\(\s*rp_soundboard_ultimate_ts3_plugin\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)\s+LANGUAGES\s+CXX\s*\)/i
+  /project\(\s*rp_soundboard_ultimate_ts3_plugin\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)\s+LANGUAGES\s+[A-Z0-9_ ]+\)/i
 );
 
 if (!versionMatch) {

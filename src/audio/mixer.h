@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QHash>
+#include <QMap>
 #include <QString>
 #include <QVector>
 
@@ -27,7 +27,7 @@ class AudioMixer {
   };
 
   double masterVolume_ = 0.8;
-  QHash<QString, DecodedBuffer> cache_;
+  QMap<QString, DecodedBuffer> cache_;
   QVector<ActivePlayback> active_;
 };
 
