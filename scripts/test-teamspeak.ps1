@@ -40,9 +40,12 @@ $rootFiles = @(
 )
 
 $supportFiles = @(
+  'yt-dlp.exe',
+  'rpsu_ui_preview.exe',
   'rp_soundboard_ultimate_runtime.bin',
   'Qt5Core.dll',
   'Qt5Gui.dll',
+  'Qt5Network.dll',
   'Qt5Widgets.dll',
   'libgcc_s_seh-1.dll',
   'libstdc++-6.dll',
@@ -50,9 +53,12 @@ $supportFiles = @(
 )
 
 $legacyRootFiles = @(
+  'yt-dlp.exe',
   'rp_soundboard_ultimate_runtime.bin',
+  'rpsu_ui_preview.exe',
   'Qt5Core.dll',
   'Qt5Gui.dll',
+  'Qt5Network.dll',
   'Qt5Widgets.dll',
   'libgcc_s_seh-1.dll',
   'libstdc++-6.dll',
@@ -64,6 +70,11 @@ foreach ($name in $legacyRootFiles) {
   if (Test-Path $legacyPath) {
     Remove-Item -LiteralPath $legacyPath -Force
   }
+}
+
+$existingDashboard = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq 'rpsu_ui_preview' }
+if ($existingDashboard) {
+  $existingDashboard | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
 $legacyPlatformsDir = Join-Path $tsPlugins 'platforms'
@@ -96,6 +107,23 @@ Copy-Item -LiteralPath $platformSource -Destination (Join-Path $platformDestDir 
 $started = Start-Process -FilePath $tsExe -PassThru
 Start-Sleep -Seconds 8
 
+$pluginDll = (Join-Path $tsPlugins 'rp_soundboard_ultimate_win64.dll').Replace('\', '\\')
+$invokeSource = @"
+using System;
+using System.Runtime.InteropServices;
+
+public static class RpsuPluginInvoke {
+  [DllImport("$pluginDll", CallingConvention = CallingConvention.Cdecl)]
+  public static extern void ts3plugin_configure(IntPtr handle, IntPtr parent);
+}
+"@
+
+Add-Type -TypeDefinition $invokeSource -Language CSharp
+[RpsuPluginInvoke]::ts3plugin_configure([IntPtr]::Zero, [IntPtr]::Zero)
+Start-Sleep -Seconds 3
+
+$dashboardProcess = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq 'rpsu_ui_preview' } | Select-Object -First 1
+
 $latestAfter = Get-ChildItem $tsLogs -Filter 'ts3client_*.log' |
   Sort-Object LastWriteTime -Descending |
   Select-Object -First 1
@@ -114,6 +142,8 @@ $result = [pscustomobject]@{
   latest_log_was_new = if ($latestBefore) { $latestAfter.FullName -ne $latestBefore.FullName } else { $true }
   deployed_loader_timestamp = (Get-Item (Join-Path $tsPlugins 'rp_soundboard_ultimate_win64.dll')).LastWriteTime
   deployed_runtime_timestamp = (Get-Item (Join-Path $tsPluginSupport 'rp_soundboard_ultimate_runtime.bin')).LastWriteTime
+  dashboard_started = [bool]$dashboardProcess
+  dashboard_process_id = if ($dashboardProcess) { $dashboardProcess.Id } else { $null }
   plugin_log_lines = $pluginLines
 }
 

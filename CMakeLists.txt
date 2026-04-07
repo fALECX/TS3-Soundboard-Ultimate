@@ -28,6 +28,8 @@ set(PLUGIN_RUNTIME_SOURCES
   src/plugin.cpp
   src/core/models.cpp
   src/core/storage.cpp
+  src/core/youtube_service.cpp
+  src/audio/preview_player.cpp
   src/audio/wav_decoder.cpp
   src/audio/mixer.cpp
   src/ui/main_window.cpp
@@ -38,6 +40,8 @@ set(HEADERS
   src/plugin_context.h
   src/core/models.h
   src/core/storage.h
+  src/core/youtube_service.h
+  src/audio/preview_player.h
   src/audio/wav_decoder.h
   src/audio/mixer.h
   src/ui/main_window.h
@@ -85,6 +89,7 @@ target_link_libraries(${PLUGIN_RUNTIME_NAME}
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Widgets
     Qt${QT_VERSION_MAJOR}::Network
+    winmm
 )
 
 target_compile_definitions(${PLUGIN_RUNTIME_NAME}
@@ -107,12 +112,16 @@ add_executable(rpsu_ui_preview
   src/ui_preview_main.cpp
   src/core/models.cpp
   src/core/storage.cpp
+  src/core/youtube_service.cpp
+  src/audio/preview_player.cpp
   src/audio/wav_decoder.cpp
   src/audio/mixer.cpp
   src/ui/main_window.cpp
   src/plugin_context.h
   src/core/models.h
   src/core/storage.h
+  src/core/youtube_service.h
+  src/audio/preview_player.h
   src/audio/wav_decoder.h
   src/audio/mixer.h
   src/ui/main_window.h
@@ -128,6 +137,7 @@ target_link_libraries(rpsu_ui_preview
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Widgets
     Qt${QT_VERSION_MAJOR}::Network
+    winmm
 )
 
 target_compile_definitions(rpsu_ui_preview
@@ -182,6 +192,7 @@ if(TARGET Qt${QT_VERSION_MAJOR}::qmake)
     install(FILES
       "${RPSU_QT_BIN_DIR}/Qt5Core.dll"
       "${RPSU_QT_BIN_DIR}/Qt5Gui.dll"
+      "${RPSU_QT_BIN_DIR}/Qt5Network.dll"
       "${RPSU_QT_BIN_DIR}/Qt5Widgets.dll"
       DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR}
       OPTIONAL
@@ -190,6 +201,7 @@ if(TARGET Qt${QT_VERSION_MAJOR}::qmake)
     install(FILES
       "${RPSU_QT_BIN_DIR}/Qt6Core.dll"
       "${RPSU_QT_BIN_DIR}/Qt6Gui.dll"
+      "${RPSU_QT_BIN_DIR}/Qt6Network.dll"
       "${RPSU_QT_BIN_DIR}/Qt6Widgets.dll"
       DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR}
       OPTIONAL
@@ -205,11 +217,16 @@ endif()
 
 get_filename_component(RPSU_COMPILER_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
 install(FILES
+  "${CMAKE_CURRENT_SOURCE_DIR}/resources/yt-dlp.exe"
   "${RPSU_COMPILER_BIN_DIR}/libstdc++-6.dll"
   "${RPSU_COMPILER_BIN_DIR}/libgcc_s_seh-1.dll"
   "${RPSU_COMPILER_BIN_DIR}/libwinpthread-1.dll"
   DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR}
   OPTIONAL
+)
+
+install(TARGETS rpsu_ui_preview
+  RUNTIME DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR}
 )
 
 if(RPSU_MAKE_PLUGIN_FILE)

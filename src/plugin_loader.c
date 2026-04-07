@@ -19,12 +19,12 @@ struct TS3Functions ts3Functions;
 static const char* kFallbackName = "RP Soundboard Ultimate";
 static const char* kFallbackVersion = "0.2.0";
 static const char* kFallbackAuthor = "OpenAI Codex";
-static const char* kFallbackDescription = "RP Soundboard Ultimate safe-mode TeamSpeak plugin.";
+static const char* kFallbackDescription = "RP Soundboard Ultimate TeamSpeak plugin with external dashboard fallback.";
 static const char* kFallbackCommandKeyword = "rpsu";
 static const char* kFallbackMenuText = "Open RP Soundboard Ultimate";
-static const char* kSafeModeMessage =
-  "RP Soundboard Ultimate is currently running in safe mode.\n\n"
-  "The native Qt runtime is disabled inside TeamSpeak on this build to avoid client crashes.";
+static const char* kDashboardLaunchErrorMessage =
+  "RP Soundboard Ultimate could not launch the dashboard UI.\n\n"
+  "Check that the packaged dashboard files are installed under the TeamSpeak plugins folder.";
 static const int kMenuOpenWindow = 1;
 
 typedef const char* (*Ts3NameFn)(void);
@@ -226,6 +226,24 @@ static int load_runtime(void) {
   return 1;
 }
 
+static int build_support_path(wchar_t* out, size_t outCount, const wchar_t* fileName) {
+  wchar_t dir[MAX_PATH];
+  int written;
+
+  if (!path_from_module(dir, MAX_PATH)) {
+    append_debug_log("build_support_path: failed to resolve loader directory");
+    return 0;
+  }
+
+  written = swprintf(out, outCount, L"%ls\\rp_soundboard_ultimate\\%ls", dir, fileName);
+  if (written < 0 || (size_t)written >= outCount) {
+    append_debug_log("build_support_path: failed to build support path");
+    return 0;
+  }
+
+  return 1;
+}
+
 static struct PluginMenuItem* create_menu_item(enum PluginMenuType type, int id, const char* text) {
   struct PluginMenuItem* item = (struct PluginMenuItem*)malloc(sizeof(struct PluginMenuItem));
   if (!item) {
@@ -243,10 +261,39 @@ static struct PluginMenuItem* create_menu_item(enum PluginMenuType type, int id,
   return item;
 }
 
-static void show_safe_mode_message(void) {
+static int launch_dashboard_process(void) {
+  wchar_t exePath[MAX_PATH];
+  wchar_t workingDir[MAX_PATH];
+  STARTUPINFOW startupInfo;
+  PROCESS_INFORMATION processInfo;
+
+  if (!build_support_path(exePath, MAX_PATH, L"rpsu_ui_preview.exe")) {
+    return 0;
+  }
+
+  if (!build_support_path(workingDir, MAX_PATH, L".")) {
+    return 0;
+  }
+
+  memset(&startupInfo, 0, sizeof(startupInfo));
+  memset(&processInfo, 0, sizeof(processInfo));
+  startupInfo.cb = sizeof(startupInfo);
+
+  if (!CreateProcessW(exePath, NULL, NULL, NULL, FALSE, DETACHED_PROCESS, NULL, workingDir, &startupInfo, &processInfo)) {
+    append_last_error("launch_dashboard_process: CreateProcessW failed");
+    return 0;
+  }
+
+  CloseHandle(processInfo.hThread);
+  CloseHandle(processInfo.hProcess);
+  append_debug_log("launch_dashboard_process: dashboard launched");
+  return 1;
+}
+
+static void show_dashboard_launch_error(void) {
   MessageBoxA(
     NULL,
-    kSafeModeMessage,
+    kDashboardLaunchErrorMessage,
     "RP Soundboard Ultimate",
     MB_OK | MB_ICONINFORMATION
   );
@@ -291,9 +338,16 @@ PLUGINS_EXPORTDLL int ts3plugin_offersConfigure(void) {
 }
 
 PLUGINS_EXPORTDLL void ts3plugin_configure(void* handle, void* qParentWidget) {
+  if (load_runtime() && g_runtime.configure) {
+    g_runtime.configure(handle, qParentWidget);
+    return;
+  }
+
   (void)handle;
   (void)qParentWidget;
-  show_safe_mode_message();
+  if (!launch_dashboard_process()) {
+    show_dashboard_launch_error();
+  }
 }
 
 PLUGINS_EXPORTDLL void ts3plugin_registerPluginID(const char* id) {
@@ -306,7 +360,9 @@ PLUGINS_EXPORTDLL const char* ts3plugin_commandKeyword(void) {
 
 PLUGINS_EXPORTDLL int ts3plugin_processCommand(uint64 serverConnectionHandlerID, const char* command) {
   (void)serverConnectionHandlerID;
-  (void)command;
+  if (command && (_stricmp(command, "show") == 0 || _stricmp(command, "reload") == 0)) {
+    return launch_dashboard_process() ? 0 : 1;
+  }
   return 1;
 }
 
@@ -338,7 +394,9 @@ PLUGINS_EXPORTDLL void ts3plugin_onMenuItemEvent(uint64 serverConnectionHandlerI
   (void)type;
   (void)selectedItemID;
   if (menuItemID == kMenuOpenWindow) {
-    show_safe_mode_message();
+    if (!launch_dashboard_process()) {
+      show_dashboard_launch_error();
+    }
   }
 }
 
