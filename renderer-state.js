@@ -64,6 +64,9 @@ window.SoundboardApp = {
     lastPlayback: null,
     operations: [],
     contextTarget: null,
+    selectedLibrarySoundId: null,
+    libraryContextSoundId: null,
+    durationCache: {},
     soundModalSoundId: null,
     boardModal: {
       mode: 'create',

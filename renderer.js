@@ -262,6 +262,46 @@
 
     document.getElementById('library-filter-input').addEventListener('input', app.renderLibrary);
 
+    document.getElementById('library-action-play').addEventListener('click', () => {
+      const soundId = app.ui.selectedLibrarySoundId;
+      if (!soundId) return;
+      if (app.isSoundPlaying(soundId)) app.stopPlayersForSound(soundId);
+      else app.playLibrarySound(soundId);
+    });
+
+    document.getElementById('library-action-edit').addEventListener('click', () => {
+      const soundId = app.ui.selectedLibrarySoundId;
+      if (soundId) app.openSoundModal(soundId);
+    });
+
+    document.getElementById('library-action-delete').addEventListener('click', () => {
+      const soundId = app.ui.selectedLibrarySoundId;
+      if (soundId) {
+        app.selectLibraryItem(null);
+        app.confirmDeleteSound(soundId);
+      }
+    });
+
+    document.addEventListener('click', () => app.hideLibraryContextMenu());
+
+    document.querySelectorAll('.lib-ctx-item').forEach((button) => {
+      button.addEventListener('click', () => {
+        const action = button.dataset.action;
+        const soundId = app.ui.libraryContextSoundId;
+        app.hideLibraryContextMenu();
+        if (!soundId) return;
+        if (action === 'play') {
+          if (app.isSoundPlaying(soundId)) app.stopPlayersForSound(soundId);
+          else app.playLibrarySound(soundId);
+        }
+        if (action === 'edit') app.openSoundModal(soundId);
+        if (action === 'delete') {
+          app.selectLibraryItem(null);
+          app.confirmDeleteSound(soundId);
+        }
+      });
+    });
+
     document.getElementById('board-select').addEventListener('change', (event) => {
       app.state.boards.activeBoardId = event.target.value;
       app.renderAll();

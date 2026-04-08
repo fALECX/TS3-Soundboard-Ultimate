@@ -146,7 +146,7 @@ body.library-collapsed .shell {
 
 .library-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: 100%;
   overflow: hidden;
 }
@@ -333,7 +333,8 @@ body.library-collapsed .shell {
 .result-preview-btn:hover,
 .result-add-btn:hover,
 .search-close-btn:hover,
-.ctx-item:hover {
+.ctx-item:hover,
+.lib-ctx-item:hover {
   background: var(--panel-3);
   border-color: var(--border-strong);
 }
@@ -363,10 +364,25 @@ body.library-collapsed .shell {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border);
   border-radius: 14px;
+  transition: background var(--transition), border-color var(--transition);
 }
 
 .library-item {
   cursor: grab;
+}
+
+.library-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-strong);
+}
+
+.library-item.selected {
+  background: rgba(255, 171, 82, 0.08);
+  border-color: rgba(255, 171, 82, 0.35);
+}
+
+.library-item.selected:hover {
+  background: rgba(255, 171, 82, 0.12);
 }
 
 .library-item:active {
@@ -411,8 +427,56 @@ body.library-collapsed .shell {
 
 .library-item-actions {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.library-item-duration {
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  align-self: flex-end;
+}
+
+.library-action-bar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+.library-action-bar.active {
+  display: flex;
+}
+
+.library-action-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.library-action-buttons {
+  display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .tag-row {
@@ -818,7 +882,8 @@ body.library-collapsed .shell {
   display: block;
 }
 
-.ctx-item {
+.ctx-item,
+.lib-ctx-item {
   width: 100%;
   padding: 10px 12px;
   border: 0;
