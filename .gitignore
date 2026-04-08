@@ -2,6 +2,7 @@ node_modules/
 dist/
 out/
 build/
+build_fix/
 build_mingw/
 release/
 cmake-build-*/
