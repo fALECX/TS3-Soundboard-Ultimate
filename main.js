@@ -390,7 +390,7 @@ function registerImportIpc() {
   ipcMain.handle('files:import', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'webm', 'opus', 'mp4'] }],
+      filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'webm', 'opus', 'mp4'] }],
     });
 
     if (result.canceled) return [];
