@@ -18,8 +18,10 @@
 #include <QListWidgetItem>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSize>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QToolButton>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -300,11 +302,25 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   auto* topBar = new QHBoxLayout();
   auto* importButton = new QPushButton(QStringLiteral("Import Sound"), this);
   youtubeButton_ = new QPushButton(QStringLiteral("YouTube Search"), this);
+  auto* twitchButton = new QToolButton(this);
   boardSelector_ = new QComboBox(this);
   freesoundApiKey_ = new QLineEdit(this);
   freesoundApiKey_->setPlaceholderText(QStringLiteral("Freesound API key"));
   statusLabel_ = new QLabel(QStringLiteral("Select a cell, then import, search YouTube, or assign from the library."), this);
 
+  // Setup Twitch button
+  twitchButton->setToolTip(QStringLiteral("Visit fALECX on Twitch"));
+  twitchButton->setIconSize(QSize(32, 32));
+  twitchButton->setStyleSheet(
+    QStringLiteral(
+      "QToolButton { border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 8px; padding: 4px; background: rgba(145, 71, 255, 0.1); }"
+      "QToolButton:hover { background: rgba(145, 71, 255, 0.2); border-color: rgba(145, 71, 255, 0.5); }"
+    )
+  );
+  twitchButton->setText(QStringLiteral("Twitch"));
+  twitchButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+
+  topBar->addWidget(twitchButton);
   topBar->addWidget(new QLabel(QStringLiteral("Board"), this));
   topBar->addWidget(boardSelector_, 1);
   topBar->addWidget(importButton);
@@ -333,6 +349,10 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   body->addWidget(gridHost_, 2);
   body->addWidget(libraryList_, 1);
   root->addLayout(body, 1);
+
+  connect(twitchButton, &QToolButton::clicked, this, []() {
+    QDesktopServices::openUrl(QUrl(QStringLiteral("https://twitch.tv/fALECX")));
+  });
 
   connect(boardSelector_, &QComboBox::currentTextChanged, this, [this]() {
     const QString boardId = boardSelector_->currentData().toString();
