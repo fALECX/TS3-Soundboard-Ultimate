@@ -146,13 +146,17 @@
       empty.className = 'empty-state';
       empty.textContent = 'No sounds in the current library view.';
       libraryList.appendChild(empty);
+      app.updateLibraryActionBar();
       return;
     }
 
     sounds.forEach((sound) => {
       const item = document.createElement('div');
       item.className = 'library-item';
+      if (sound.soundId === app.ui.selectedLibrarySoundId) item.classList.add('selected');
       item.draggable = true;
+      item.dataset.soundId = sound.soundId;
+
       item.addEventListener('dragstart', (event) => {
         event.dataTransfer?.setData(
           'application/json',
@@ -160,12 +164,25 @@
         );
       });
 
+      item.addEventListener('click', () => {
+        app.selectLibraryItem(
+          app.ui.selectedLibrarySoundId === sound.soundId ? null : sound.soundId
+        );
+      });
+
+      item.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        app.selectLibraryItem(sound.soundId);
+        app.showLibraryContextMenu(event, sound.soundId);
+      });
+
       const main = document.createElement('div');
       main.className = 'library-item-main';
 
       const header = document.createElement('div');
       header.className = 'library-item-header';
-      header.innerHTML = `<span class="library-item-emoji">${sound.emoji || 'S'}</span>`;
+      header.innerHTML = `<span class="library-item-emoji">${sound.emoji || '🔊'}</span>`;
 
       const text = document.createElement('div');
       text.className = 'library-item-text';
@@ -188,7 +205,7 @@
 
       const playButton = document.createElement('button');
       playButton.className = 'icon-btn small';
-      playButton.textContent = app.isSoundPlaying(sound.soundId) ? '[]' : '>';
+      playButton.textContent = app.isSoundPlaying(sound.soundId) ? '⏹' : '▶';
       playButton.title = 'Preview';
       playButton.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -196,28 +213,83 @@
         else app.playLibrarySound(sound.soundId);
       });
 
-      const editButton = document.createElement('button');
-      editButton.className = 'icon-btn small';
-      editButton.textContent = 'E';
-      editButton.title = 'Edit';
-      editButton.addEventListener('click', (event) => {
-        event.stopPropagation();
-        app.openSoundModal(sound.soundId);
-      });
+      const durationBadge = document.createElement('span');
+      durationBadge.className = 'library-item-duration';
+      const cached = app.ui.durationCache[sound.soundId];
+      durationBadge.textContent = cached != null ? cached : '—';
 
-      const deleteButton = document.createElement('button');
-      deleteButton.className = 'icon-btn small danger';
-      deleteButton.textContent = 'X';
-      deleteButton.title = 'Delete';
-      deleteButton.addEventListener('click', (event) => {
-        event.stopPropagation();
-        app.confirmDeleteSound(sound.soundId);
-      });
+      if (cached == null) {
+        app.loadSoundDuration(sound).then((dur) => {
+          durationBadge.textContent = dur;
+        });
+      }
 
-      actions.append(playButton, editButton, deleteButton);
+      actions.append(playButton, durationBadge);
       item.append(main, actions);
       libraryList.appendChild(item);
     });
+
+    app.updateLibraryActionBar();
+  };
+
+  app.loadSoundDuration = async function loadSoundDuration(sound) {
+    try {
+      const url = await app.getSoundUrl(sound.filename);
+      const audio = new Audio(url);
+      await new Promise((resolve) => {
+        audio.addEventListener('loadedmetadata', resolve, { once: true });
+        audio.addEventListener('error', resolve, { once: true });
+      });
+      const dur = Number.isFinite(audio.duration) && audio.duration > 0
+        ? app.formatDuration(audio.duration)
+        : '—';
+      app.ui.durationCache[sound.soundId] = dur;
+      return dur;
+    } catch {
+      app.ui.durationCache[sound.soundId] = '—';
+      return '—';
+    }
+  };
+
+  app.selectLibraryItem = function selectLibraryItem(soundId) {
+    app.ui.selectedLibrarySoundId = soundId || null;
+
+    document.querySelectorAll('#library-list .library-item').forEach((el) => {
+      el.classList.toggle('selected', el.dataset.soundId === soundId);
+    });
+
+    app.updateLibraryActionBar();
+  };
+
+  app.updateLibraryActionBar = function updateLibraryActionBar() {
+    const bar = document.getElementById('library-action-bar');
+    const label = document.getElementById('library-action-label');
+    const soundId = app.ui.selectedLibrarySoundId;
+    const sound = soundId ? app.state.library[soundId] : null;
+
+    if (sound) {
+      bar.classList.add('active');
+      label.textContent = sound.displayName;
+    } else {
+      bar.classList.remove('active');
+      label.textContent = '';
+    }
+  };
+
+  app.showLibraryContextMenu = function showLibraryContextMenu(event, soundId) {
+    const menu = document.getElementById('library-context-menu');
+    if (!menu) return;
+    app.ui.libraryContextSoundId = soundId;
+    menu.style.left = `${event.clientX}px`;
+    menu.style.top = `${event.clientY}px`;
+    menu.classList.add('visible');
+    event.stopPropagation();
+  };
+
+  app.hideLibraryContextMenu = function hideLibraryContextMenu() {
+    const menu = document.getElementById('library-context-menu');
+    if (menu) menu.classList.remove('visible');
+    app.ui.libraryContextSoundId = null;
   };
 
   app.renderQueue = function renderQueue() {

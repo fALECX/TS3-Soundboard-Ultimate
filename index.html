@@ -27,8 +27,8 @@
       <section class="panel library-panel">
         <div class="panel-header">
           <div class="library-header-copy">
-            <p class="panel-kicker">Sounds</p>
-            <h2>Sounds</h2>
+            <p class="panel-kicker">Sound Library</p>
+            <h2>Library</h2>
           </div>
           <div class="library-header-actions">
             <span class="pill" id="library-count-pill">0</span>
@@ -41,6 +41,15 @@
         </div>
 
         <div class="library-list" id="library-list"></div>
+
+        <div class="library-action-bar" id="library-action-bar">
+          <span class="library-action-label" id="library-action-label"></span>
+          <div class="library-action-buttons">
+            <button class="icon-btn small" id="library-action-play" title="Play">▶</button>
+            <button class="icon-btn small" id="library-action-edit" title="Edit">✏</button>
+            <button class="icon-btn small danger" id="library-action-delete" title="Delete">🗑</button>
+          </div>
+        </div>
       </section>
     </aside>
 
@@ -108,6 +117,13 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <div class="context-menu" id="library-context-menu">
+    <button class="lib-ctx-item" data-action="play">▶ Play</button>
+    <button class="lib-ctx-item" data-action="edit">✏ Edit</button>
+    <div class="ctx-divider"></div>
+    <button class="lib-ctx-item ctx-item-danger" data-action="delete">🗑 Delete from Library</button>
   </div>
 
   <div class="context-menu" id="context-menu">
