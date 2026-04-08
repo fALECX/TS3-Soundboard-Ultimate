@@ -332,6 +332,46 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="trim-modal">
+    <div class="modal large">
+      <div class="modal-header">
+        <h2 id="trim-modal-title">Trim Sound</h2>
+        <button class="modal-close" id="trim-modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="trim-waveform-wrap">
+          <canvas id="trim-waveform-canvas" class="trim-waveform-canvas"></canvas>
+        </div>
+        <div class="trim-time-row">
+          <div class="trim-time-item">
+            <div class="trim-time-label">Start</div>
+            <div class="trim-time-value" id="trim-time-start">0.000s</div>
+          </div>
+          <div class="trim-time-item trim-time-item--sel">
+            <div class="trim-time-label">Selected</div>
+            <div class="trim-time-value" id="trim-time-duration">0.000s</div>
+          </div>
+          <div class="trim-time-item">
+            <div class="trim-time-label">End</div>
+            <div class="trim-time-value" id="trim-time-end">0.000s</div>
+          </div>
+          <div class="trim-time-item trim-time-item--dim">
+            <div class="trim-time-label">Total</div>
+            <div class="trim-time-value" id="trim-total-duration">0.000s</div>
+          </div>
+        </div>
+        <p class="field-hint">Drag the orange handles on the waveform to set the start and end points.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="trim-preview-btn">▶ Preview</button>
+        <div class="modal-footer-right">
+          <button class="btn-secondary" id="trim-cancel-btn">Cancel</button>
+          <button class="btn-primary" id="trim-save-btn">Save Trim</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast">
     <span id="toast-message">Info</span>
   </div>
@@ -339,6 +379,7 @@
   <script src="renderer-state.js"></script>
   <script src="renderer-playback.js"></script>
   <script src="renderer-ui.js"></script>
+  <script src="renderer-trim.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

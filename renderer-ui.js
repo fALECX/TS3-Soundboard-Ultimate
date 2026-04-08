@@ -205,6 +205,15 @@
         app.openSoundModal(sound.soundId);
       });
 
+      const trimButton = document.createElement('button');
+      trimButton.className = 'icon-btn small';
+      trimButton.textContent = '✂';
+      trimButton.title = 'Trim';
+      trimButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        app.openTrimModal(sound.soundId);
+      });
+
       const deleteButton = document.createElement('button');
       deleteButton.className = 'icon-btn small danger';
       deleteButton.textContent = 'X';
@@ -214,7 +223,7 @@
         app.confirmDeleteSound(sound.soundId);
       });
 
-      actions.append(playButton, editButton, deleteButton);
+      actions.append(playButton, editButton, trimButton, deleteButton);
       item.append(main, actions);
       libraryList.appendChild(item);
     });

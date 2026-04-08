@@ -410,6 +410,8 @@
         if (action === 'delete') app.confirmDeleteSound(target.soundId);
       });
     });
+
+    app.bindTrimModalEvents();
   };
 
   app.initialize = async function initialize() {

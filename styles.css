@@ -873,6 +873,69 @@ body.library-collapsed .library-header-actions {
   }
 }
 
+/* ── Trim Modal ────────────────────────────────────────────────── */
+
+.trim-waveform-wrap {
+  width: 100%;
+  height: 128px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0f1620;
+  border: 1px solid var(--border);
+}
+
+.trim-waveform-canvas {
+  display: block;
+  width: 100%;
+  height: 128px;
+}
+
+.trim-time-row {
+  display: flex;
+  gap: 1px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--border);
+}
+
+.trim-time-item {
+  flex: 1;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  text-align: center;
+}
+
+.trim-time-item--sel {
+  background: rgba(255, 171, 82, 0.07);
+}
+
+.trim-time-item--dim {
+  opacity: 0.45;
+}
+
+.trim-time-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.trim-time-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.trim-time-item--sel .trim-time-label,
+.trim-time-item--sel .trim-time-value {
+  color: var(--accent);
+}
+
 @media (max-width: 860px) {
   .shell {
     grid-template-columns: 1fr;
