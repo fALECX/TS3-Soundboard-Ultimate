@@ -1,102 +1,131 @@
 # RP Soundboard Ultimate
 
-Native TeamSpeak 3 soundboard plugin for Windows.
+Created and maintained by fALECX.
 
-## What This Ships
+- Twitch: https://twitch.tv/fALECX
+- X: https://x.com/fALECX
+- Discord: `falecx`
 
-This repository now ships as a TeamSpeak 3 plugin package, not an Electron desktop app.
+RP Soundboard Ultimate is an open-source TeamSpeak 3 soundboard plugin for Windows. It ships as a native TS3 plugin package, not as a separate Electron app.
 
-- Native plugin source in `src/`
-- TeamSpeak SDK headers in `pluginsdk/include`
-- CMake build and packaging flow in `CMakeLists.txt`
-- Final installer artifact as a `.ts3_plugin` file for TeamSpeak's built-in package wizard
+## What It Does
 
-Legacy Electron source files remain in the tree for reference only. They are not part of the release path.
+- Injects sound playback directly into TeamSpeak captured voice
+- Opens a TeamSpeak-owned Qt control window from the plugin menu
+- Imports local audio files into a persistent sound library
+- Supports YouTube search/download through bundled helper tools
+- Stores boards, library metadata, and runtime config in the user's app data directory
+- Migrates legacy data from older RP Soundboard Ultimate desktop installs when present
+
+## Project Status
+
+This repository is structured for open-source release around the native plugin path only.
+
+- Kept: native plugin source, TeamSpeak SDK headers, build/package scripts, release docs
+- Removed: tracked build outputs, obsolete Electron/web app files, bundled sample audio, temporary test artifacts, embedded upstream checkout
+
+The upstream implementation reference is documented in [docs/upstream-basis.md](docs/upstream-basis.md).
 
 ## Requirements
 
-- Windows 10/11
-- TeamSpeak 3 client
+- Windows 10 or 11
+- TeamSpeak 3 64-bit client
 - CMake 3.21+
-- A C++17 compiler toolchain for Windows
+- Visual Studio 2022 or another Windows C++17 toolchain
 - Qt 5 or Qt 6 with `Core`, `Widgets`, and `Network`
 
-## Build And Package
+## Repository Layout
 
-```bash
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DRPSU_MAKE_PLUGIN_FILE=ON
-cmake --build build --config Release
-cmake --install build --config Release --prefix build/install
+- `src/`: native plugin, runtime, storage, playback, and Qt UI code
+- `pluginsdk/include/`: TeamSpeak 3 plugin SDK headers
+- `scripts/test-teamspeak.ps1`: local build, deploy, and TeamSpeak smoke test
+- `scripts/validate-release.js`: release metadata validation
+- `tests/release.test.js`: lightweight repository-level release checks
+- `sounds/`: ignored runtime sound storage placeholder only
+- `resources/`: ignored helper-tool drop location placeholder only
+
+## Build
+
+```powershell
+cmake -S . -B build_msvc_qt5 -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake --build build_msvc_qt5
+cmake --install build_msvc_qt5 --prefix build_msvc_qt5/install
 ```
 
-Outputs:
-- Plugin DLL: `build/Release/rp_soundboard_ultimate_win64.dll`
-- TeamSpeak installer package: `release/rp_soundboard_ultimate_<version>.ts3_plugin`
+For Visual Studio generators, use the usual `--config Release` form instead.
 
-## Install
+## Package
 
-1. Double-click the `.ts3_plugin` file.
-2. Or drag it onto `package_inst.exe` inside your TeamSpeak 3 installation folder.
-3. Complete TeamSpeak's package installer wizard.
+To produce the final TeamSpeak plugin package:
 
-## Runtime
+```powershell
+cmake -S . -B build_msvc_qt5 -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -DRPSU_MAKE_PLUGIN_FILE=ON
+cmake --build build_msvc_qt5
+cmake --install build_msvc_qt5 --prefix build_msvc_qt5/install
+```
 
-- Open the plugin from TeamSpeak's plugin menu or configure action.
-- The plugin opens its own TeamSpeak-owned Qt window.
-- Audio playback is injected directly into captured voice.
-- Library and board state are stored in the user's application data folder and migrated on first launch from legacy files when present.
+Primary outputs:
 
-## Starter Sounds
+- `build_msvc_qt5/install/plugins/rp_soundboard_ultimate_win64.dll`
+- `build_msvc_qt5/install/plugins/rp_soundboard_ultimate/rp_soundboard_ultimate_runtime.bin`
+- `release/rp_soundboard_ultimate_<version>.ts3_plugin`
 
-Bundled starter assets live in `sounds/`:
-- `cigarette-light.wav`
-- `cigarette-inhale.wav`
-- `bone-crack.wav`
-- `handcuffs-click.wav`
-- `medkit-open.wav`
-- `police-radio-chatter.wav`
-- `cash-count.wav`
-- `car-lock-beep.wav`
+## Install In TeamSpeak
 
-## Verification
+1. Build the `.ts3_plugin` package.
+2. Double-click it, or drag it onto TeamSpeak's `package_inst.exe`.
+3. Restart TeamSpeak if needed.
+4. Open `Tools -> Options -> Addons` and confirm `RP Soundboard Ultimate` is loaded.
 
-```bash
+## Local Verification
+
+Repository checks:
+
+```powershell
 npm test
 npm run validate:release
 ```
 
-The release validation script checks that:
-- `package.json` matches the CMake project version
-- Electron release metadata is no longer present
-- the repo is still aligned to the TS3 plugin package flow
+Full TeamSpeak smoke test:
 
-## Legal, Licensing, and Content Policy
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/test-teamspeak.ps1 -Build -StopTeamSpeak -StartTeamSpeak -BuildDir .\build_msvc_qt5
+```
 
-- This repository does **not** ship third-party sound samples by default.
-- You are responsible for ensuring you have the legal right to download, store, and play any audio.
+The smoke test verifies deployment, TeamSpeak launch, plugin load, and whether the runtime initialized instead of falling back to safe mode.
 
-### Trademark Disclaimer
+## Runtime Data
 
-- **Grand Theft Auto** and **GTA** are trademarks of Take-Two Interactive / Rockstar Games.
-- **TeamSpeak** is a trademark of TeamSpeak Systems GmbH.
+User data is stored under the platform app-data location in:
+
+- `RP Soundboard Ultimate/library.json`
+- `RP Soundboard Ultimate/boards-config.json`
+- `RP Soundboard Ultimate/plugin-config.json`
+- `RP Soundboard Ultimate/sounds/`
+
+## Audio And Content Policy
+
+- No bundled sound samples are shipped in the repository.
+- Do not commit copyrighted audio you do not have redistribution rights for.
+- You are responsible for the legality of any audio you import, download, store, or transmit.
+
+Recommended sources:
+
+- original recordings you created
+- public-domain audio
+- explicitly licensed royalty-free or Creative Commons audio with redistribution rights
+
+## Trademark Disclaimer
+
+- TeamSpeak is a trademark of TeamSpeak Systems GmbH.
+- Grand Theft Auto and GTA are trademarks of Take-Two Interactive / Rockstar Games.
 - This project is unofficial and not affiliated with, endorsed by, or sponsored by those trademark owners.
 
-## Open Source Docs
+## Open Source Files
 
-- License: [LICENSE](./LICENSE)
-- Contributing: [CONTRIBUTING.md](./CONTRIBUTING.md)
-- Code of Conduct: [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
-- Security Policy: [SECURITY.md](./SECURITY.md)
-- Changelog: [CHANGELOG.md](./CHANGELOG.md)
-- Release Template: [RELEASE_TEMPLATE.md](./RELEASE_TEMPLATE.md)
-
-## Accepted Audio Source Guidance
-
-Recommended for repository examples and docs:
-- Original recordings you created
-- Public domain audio
-- Explicitly licensed CC or royalty-free audio with redistribution rights
-
-Avoid committing:
-- Commercial copyrighted clips without permission
-- Content with unclear or missing license terms
+- [LICENSE](LICENSE)
+- [CHANGELOG.md](CHANGELOG.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- [SECURITY.md](SECURITY.md)
+- [RELEASE_TEMPLATE.md](RELEASE_TEMPLATE.md)

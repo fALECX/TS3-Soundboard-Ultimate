@@ -4,10 +4,12 @@
   "private": true,
   "description": "Native TeamSpeak 3 soundboard plugin for Windows.",
   "scripts": {
-    "test": "node --test tests/smoke.test.js",
-    "validate:release": "node scripts/validate-release.js"
+    "test": "node --test tests/release.test.js",
+    "validate:release": "node scripts/validate-release.js",
+    "deploy:ts3": "powershell -ExecutionPolicy Bypass -File scripts/test-teamspeak.ps1 -Build -StopTeamSpeak",
+    "deploy:ts3:start": "powershell -ExecutionPolicy Bypass -File scripts/test-teamspeak.ps1 -Build -StopTeamSpeak -StartTeamSpeak"
   },
-  "author": "RP Soundboard Ultimate",
+  "author": "fALECX",
   "license": "MIT",
   "keywords": [
     "ts3",

@@ -2,10 +2,17 @@
 
 #include <QDir>
 
+#include "pluginsdk/include/teamspeak/public_definitions.h"
+#include "src/audio/audio_decoder.h"
+
 namespace rpsu {
 
 void AudioMixer::setMasterVolume(double volume) {
   masterVolume_ = volume;
+}
+
+void AudioMixer::setMuteMyselfDuringPlayback(bool enabled) {
+  muteMyselfDuringPlayback_ = enabled;
 }
 
 bool AudioMixer::playSound(const SoundRecord& sound, const QString& soundsDir, QString* errorMessage) {
@@ -25,9 +32,9 @@ bool AudioMixer::playSound(const SoundRecord& sound, const QString& soundsDir, Q
     stopSound(sound.soundId);
   }
 
-  if (!cache_.contains(sound.filename)) {
+    if (!cache_.contains(sound.filename)) {
     DecodedBuffer decoded;
-    if (!WavDecoder::decodeFile(QDir(soundsDir).filePath(sound.filename), decoded, errorMessage)) {
+    if (!AudioDecoder::decodeFile(QDir(soundsDir).filePath(sound.filename), decoded, errorMessage)) {
       return false;
     }
     cache_.insert(sound.filename, decoded);
@@ -59,6 +66,10 @@ void AudioMixer::stopSound(const QString& soundId) {
   }
 }
 
+void AudioMixer::stopAll() {
+  active_.clear();
+}
+
 bool AudioMixer::isPlaying(const QString& soundId) const {
   for (const ActivePlayback& playback : active_) {
     if (playback.soundId == soundId) {
@@ -66,6 +77,10 @@ bool AudioMixer::isPlaying(const QString& soundId) const {
     }
   }
   return false;
+}
+
+bool AudioMixer::hasActivePlayback() const {
+  return !active_.isEmpty();
 }
 
 bool AudioMixer::mixIntoCaptured(short* samples, int sampleCount, int channels) {
@@ -89,18 +104,98 @@ bool AudioMixer::mixIntoCaptured(short* samples, int sampleCount, int channels) 
       mixed += playback.samples[playback.position++] * playback.gain * static_cast<float>(masterVolume_);
     }
 
-    if (qFuzzyIsNull(mixed)) {
-      continue;
-    }
-
-    edited = true;
     for (int channel = 0; channel < channels; ++channel) {
       const int sampleIndex = frame * channels + channel;
-      const int value = static_cast<int>(samples[sampleIndex] + mixed * 32767.0f);
-      samples[sampleIndex] = static_cast<short>(qBound(-32768, value, 32767));
+      const int base = muteMyselfDuringPlayback_ ? 0 : samples[sampleIndex];
+      const int value = static_cast<int>(base + mixed * 32767.0f);
+      const short clamped = static_cast<short>(qBound(-32768, value, 32767));
+      if (samples[sampleIndex] != clamped) {
+        samples[sampleIndex] = clamped;
+        edited = true;
+      }
     }
   }
 
+  return edited;
+}
+
+bool AudioMixer::mixIntoPlayback(short* samples, int sampleCount, int channels, const unsigned int* channelSpeakerArray, unsigned int* channelFillMask) {
+  if (active_.isEmpty()) {
+    return false;
+  }
+
+  bool edited = false;
+  const unsigned int bitMaskLeft = SPEAKER_FRONT_LEFT | SPEAKER_HEADPHONES_LEFT;
+  const unsigned int bitMaskRight = SPEAKER_FRONT_RIGHT | SPEAKER_HEADPHONES_RIGHT;
+  const int leftIndex = [&]() {
+    if (!channelSpeakerArray) {
+      return 0;
+    }
+    for (int index = 0; index < channels; ++index) {
+      if (channelSpeakerArray[index] & bitMaskLeft) {
+        return index;
+      }
+    }
+    return 0;
+  }();
+  const int rightIndex = [&]() {
+    if (!channelSpeakerArray) {
+      return qMin(1, channels - 1);
+    }
+    for (int index = 0; index < channels; ++index) {
+      if (channelSpeakerArray[index] & bitMaskRight) {
+        return index;
+      }
+    }
+    return qMin(1, channels - 1);
+  }();
+  const bool fillLeft = !channelFillMask || ((*channelFillMask & bitMaskLeft) == 0);
+  const bool fillRight = !channelFillMask || ((*channelFillMask & bitMaskRight) == 0);
+
+  for (int frame = 0; frame < sampleCount; ++frame) {
+    float mixed = 0.0f;
+    for (int index = active_.size() - 1; index >= 0; --index) {
+      ActivePlayback& playback = active_[index];
+      if (playback.position >= playback.samples.size()) {
+        if (playback.loop && !playback.samples.isEmpty()) {
+          playback.position = 0;
+        } else {
+          active_.remove(index);
+          continue;
+        }
+      }
+      mixed += playback.samples[playback.position++] * playback.gain * static_cast<float>(masterVolume_);
+    }
+
+    auto writeChannel = [&](int channelIndex) {
+      if (channelIndex < 0 || channelIndex >= channels) {
+        return;
+      }
+      const int sampleIndex = frame * channels + channelIndex;
+      const int base = samples[sampleIndex];
+      const int value = static_cast<int>(base + mixed * 32767.0f);
+      const short clamped = static_cast<short>(qBound(-32768, value, 32767));
+      if (samples[sampleIndex] != clamped) {
+        samples[sampleIndex] = clamped;
+        edited = true;
+      }
+    };
+
+    if (channels <= 1) {
+      writeChannel(0);
+    } else {
+      if (fillLeft) {
+        writeChannel(leftIndex);
+      }
+      if (fillRight) {
+        writeChannel(rightIndex);
+      }
+    }
+  }
+
+  if (edited && channelFillMask) {
+    *channelFillMask |= (bitMaskLeft | bitMaskRight);
+  }
   return edited;
 }
 

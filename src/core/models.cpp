@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QRegularExpression>
+#include <QtMath>
 #include <QUuid>
 
 namespace rpsu {
@@ -172,7 +173,11 @@ QJsonObject toJson(const PluginConfig& config) {
   QJsonObject object;
   object.insert(QStringLiteral("firstRunComplete"), config.firstRunComplete);
   object.insert(QStringLiteral("freesoundApiKey"), config.freesoundApiKey);
-  object.insert(QStringLiteral("masterVolume"), config.masterVolume);
+  object.insert(QStringLiteral("volumeRemote"), config.volumeRemote);
+  object.insert(QStringLiteral("volumeLocal"), config.volumeLocal);
+  object.insert(QStringLiteral("playbackLocal"), config.playbackLocal);
+  object.insert(QStringLiteral("muteMyselfDuringPlayback"), config.muteMyselfDuringPlayback);
+  object.insert(QStringLiteral("showHotkeysOnButtons"), config.showHotkeysOnButtons);
   object.insert(QStringLiteral("globalHotkeysEnabled"), config.globalHotkeysEnabled);
   return object;
 }
@@ -209,8 +214,8 @@ BoardRecord boardFromJson(const QJsonObject& object) {
   board.id = object.value(QStringLiteral("id")).toString(createId(QStringLiteral("board")));
   board.name = object.value(QStringLiteral("name")).toString(QStringLiteral("Main Board"));
   board.hotkey = object.value(QStringLiteral("hotkey")).toString();
-  board.cols = object.value(QStringLiteral("cols")).toInt(4);
-  board.rows = object.value(QStringLiteral("rows")).toInt(3);
+  board.cols = qMax(1, object.value(QStringLiteral("cols")).toInt(4));
+  board.rows = qMax(1, object.value(QStringLiteral("rows")).toInt(3));
 
   const int total = qMax(1, board.cols * board.rows);
   board.cells.resize(total);
@@ -230,7 +235,17 @@ PluginConfig configFromJson(const QJsonObject& object) {
   PluginConfig config;
   config.firstRunComplete = object.value(QStringLiteral("firstRunComplete")).toBool(false);
   config.freesoundApiKey = object.value(QStringLiteral("freesoundApiKey")).toString();
-  config.masterVolume = object.value(QStringLiteral("masterVolume")).toDouble(0.8);
+
+  if (object.contains(QStringLiteral("volumeRemote"))) {
+    config.volumeRemote = qBound(0, object.value(QStringLiteral("volumeRemote")).toInt(80), 100);
+  } else if (object.contains(QStringLiteral("masterVolume"))) {
+    const double legacyMaster = object.value(QStringLiteral("masterVolume")).toDouble(0.8);
+    config.volumeRemote = qBound(0, qRound(legacyMaster * 100.0), 100);
+  }
+  config.volumeLocal = qBound(0, object.value(QStringLiteral("volumeLocal")).toInt(config.volumeRemote), 100);
+  config.playbackLocal = object.value(QStringLiteral("playbackLocal")).toBool(true);
+  config.muteMyselfDuringPlayback = object.value(QStringLiteral("muteMyselfDuringPlayback")).toBool(false);
+  config.showHotkeysOnButtons = object.value(QStringLiteral("showHotkeysOnButtons")).toBool(false);
   config.globalHotkeysEnabled = object.value(QStringLiteral("globalHotkeysEnabled")).toBool(true);
   return config;
 }

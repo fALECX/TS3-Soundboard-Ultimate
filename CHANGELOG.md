@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- Repository cleanup for open-source release readiness.
+- Documentation rewritten around the native TeamSpeak plugin path.
+- Maintainer contact and attribution added to project docs.
+
+### Removed
+- Tracked build artifacts and temporary test outputs from version control.
+- Obsolete web/Electron leftovers and release-risk bundled sample audio.
+- Vendored upstream checkout from the repository tree.
+
 ## [0.2.0] - 2026-04-04
 
 ### Added

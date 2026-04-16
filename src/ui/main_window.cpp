@@ -4,6 +4,7 @@
 #include <future>
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDesktopServices>
@@ -18,6 +19,9 @@
 #include <QListWidgetItem>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSignalBlocker>
+#include <QSlider>
+#include <QSpinBox>
 #include <QSize>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -329,6 +333,63 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   root->addLayout(topBar);
   root->addWidget(statusLabel_);
 
+  auto* settingsFrame = new QFrame(this);
+  settingsFrame->setFrameShape(QFrame::StyledPanel);
+  auto* settingsLayout = new QVBoxLayout(settingsFrame);
+  settingsLayout->setContentsMargins(10, 8, 10, 8);
+  settingsLayout->setSpacing(8);
+
+  auto* settingsTitle = new QLabel(QStringLiteral("Settings"), settingsFrame);
+  settingsTitle->setStyleSheet(QStringLiteral("font-weight: 600;"));
+  settingsLayout->addWidget(settingsTitle);
+
+  auto* settingsRows = new QHBoxLayout();
+  auto* volumeLayout = new QVBoxLayout();
+  auto* volumeRemoteRow = new QHBoxLayout();
+  volumeRemoteRow->addWidget(new QLabel(QStringLiteral("Volume Remote"), settingsFrame));
+  volumeRemoteSlider_ = new QSlider(Qt::Horizontal, settingsFrame);
+  volumeRemoteSlider_->setRange(0, 100);
+  volumeRemoteSlider_->setPageStep(10);
+  volumeRemoteRow->addWidget(volumeRemoteSlider_, 1);
+  volumeLayout->addLayout(volumeRemoteRow);
+
+  auto* volumeLocalRow = new QHBoxLayout();
+  volumeLocalRow->addWidget(new QLabel(QStringLiteral("Volume Local"), settingsFrame));
+  volumeLocalSlider_ = new QSlider(Qt::Horizontal, settingsFrame);
+  volumeLocalSlider_->setRange(0, 100);
+  volumeLocalSlider_->setPageStep(10);
+  volumeLocalRow->addWidget(volumeLocalSlider_, 1);
+  volumeLayout->addLayout(volumeLocalRow);
+  settingsRows->addLayout(volumeLayout, 3);
+
+  auto* togglesLayout = new QVBoxLayout();
+  muteOnClientCheckbox_ = new QCheckBox(QStringLiteral("Mute on my client"), settingsFrame);
+  muteMyselfDuringPlaybackCheckbox_ = new QCheckBox(QStringLiteral("Mute myself during playback"), settingsFrame);
+  showHotkeysOnButtonsCheckbox_ = new QCheckBox(QStringLiteral("Show hotkeys on buttons"), settingsFrame);
+  disableHotkeysCheckbox_ = new QCheckBox(QStringLiteral("Disable hotkeys"), settingsFrame);
+  togglesLayout->addWidget(muteOnClientCheckbox_);
+  togglesLayout->addWidget(muteMyselfDuringPlaybackCheckbox_);
+  togglesLayout->addWidget(showHotkeysOnButtonsCheckbox_);
+  togglesLayout->addWidget(disableHotkeysCheckbox_);
+  togglesLayout->addStretch(1);
+  settingsRows->addLayout(togglesLayout, 2);
+
+  auto* sizeLayout = new QHBoxLayout();
+  sizeLayout->addWidget(new QLabel(QStringLiteral("Rows:"), settingsFrame));
+  rowsSpin_ = new QSpinBox(settingsFrame);
+  rowsSpin_->setRange(1, 50);
+  sizeLayout->addWidget(rowsSpin_);
+  sizeLayout->addSpacing(8);
+  sizeLayout->addWidget(new QLabel(QStringLiteral("Columns:"), settingsFrame));
+  colsSpin_ = new QSpinBox(settingsFrame);
+  colsSpin_->setRange(1, 50);
+  sizeLayout->addWidget(colsSpin_);
+  sizeLayout->addStretch(1);
+
+  settingsLayout->addLayout(settingsRows);
+  settingsLayout->addLayout(sizeLayout);
+  root->addWidget(settingsFrame);
+
   previewBar_ = new QFrame(this);
   previewBar_->setStyleSheet(QStringLiteral("QFrame { background: #eef4fb; border: 1px solid #d3dfed; border-radius: 8px; }"));
   auto* previewLayout = new QHBoxLayout(previewBar_);
@@ -402,6 +463,78 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
     }
   });
 
+  connect(volumeRemoteSlider_, &QSlider::valueChanged, this, [this](int value) {
+    if (rebuildingUi_) {
+      return;
+    }
+    if (onVolumeRemoteChanged) {
+      onVolumeRemoteChanged(value);
+    }
+  });
+
+  connect(volumeLocalSlider_, &QSlider::valueChanged, this, [this](int value) {
+    if (rebuildingUi_) {
+      return;
+    }
+    if (onVolumeLocalChanged) {
+      onVolumeLocalChanged(value);
+    }
+  });
+
+  connect(muteOnClientCheckbox_, &QCheckBox::toggled, this, [this](bool checked) {
+    if (rebuildingUi_) {
+      return;
+    }
+    if (onPlaybackLocalChanged) {
+      onPlaybackLocalChanged(!checked);
+    }
+  });
+
+  connect(muteMyselfDuringPlaybackCheckbox_, &QCheckBox::toggled, this, [this](bool checked) {
+    if (rebuildingUi_) {
+      return;
+    }
+    if (onMuteMyselfDuringPlaybackChanged) {
+      onMuteMyselfDuringPlaybackChanged(checked);
+    }
+  });
+
+  connect(showHotkeysOnButtonsCheckbox_, &QCheckBox::toggled, this, [this](bool checked) {
+    if (rebuildingUi_) {
+      return;
+    }
+    if (onShowHotkeysOnButtonsChanged) {
+      onShowHotkeysOnButtonsChanged(checked);
+    }
+  });
+
+  connect(disableHotkeysCheckbox_, &QCheckBox::toggled, this, [this](bool checked) {
+    if (rebuildingUi_) {
+      return;
+    }
+    if (onGlobalHotkeysEnabledChanged) {
+      onGlobalHotkeysEnabledChanged(!checked);
+    }
+  });
+
+  connect(rowsSpin_, qOverload<int>(&QSpinBox::valueChanged), this, [this](int rows) {
+    if (rebuildingUi_) {
+      return;
+    }
+    if (onActiveBoardSizeChanged) {
+      onActiveBoardSizeChanged(rows, colsSpin_->value());
+    }
+  });
+
+  connect(colsSpin_, qOverload<int>(&QSpinBox::valueChanged), this, [this](int cols) {
+    if (rebuildingUi_) {
+      return;
+    }
+    if (onActiveBoardSizeChanged) {
+      onActiveBoardSizeChanged(rowsSpin_->value(), cols);
+    }
+  });
+
   connect(stopPreviewButton_, &QPushButton::clicked, this, [this]() {
     if (onStopPreview) {
       onStopPreview();
@@ -412,6 +545,14 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
 void MainWindow::setState(const AppState& state) {
   state_ = state;
   rebuild();
+}
+
+QString MainWindow::buildCellButtonLabel(const Cell& cell, const QString& fallbackText) const {
+  QString label = fallbackText;
+  if (state_.config.showHotkeysOnButtons && !cell.hotkey.trimmed().isEmpty()) {
+    label += QStringLiteral("\n[%1]").arg(cell.hotkey);
+  }
+  return label;
 }
 
 const BoardRecord* MainWindow::activeBoard() const {
@@ -486,7 +627,17 @@ void MainWindow::handleCellClick(int cellIndex, const QString& soundId) {
 }
 
 void MainWindow::rebuild() {
-  boardSelector_->blockSignals(true);
+  rebuildingUi_ = true;
+  const QSignalBlocker boardSelectorBlock(boardSelector_);
+  const QSignalBlocker volumeRemoteBlock(volumeRemoteSlider_);
+  const QSignalBlocker volumeLocalBlock(volumeLocalSlider_);
+  const QSignalBlocker muteOnClientBlock(muteOnClientCheckbox_);
+  const QSignalBlocker muteMyselfBlock(muteMyselfDuringPlaybackCheckbox_);
+  const QSignalBlocker showHotkeysBlock(showHotkeysOnButtonsCheckbox_);
+  const QSignalBlocker disableHotkeysBlock(disableHotkeysCheckbox_);
+  const QSignalBlocker rowsBlock(rowsSpin_);
+  const QSignalBlocker colsBlock(colsSpin_);
+
   boardSelector_->clear();
   for (const BoardRecord& board : state_.boards) {
     boardSelector_->addItem(board.name, board.id);
@@ -494,9 +645,24 @@ void MainWindow::rebuild() {
       boardSelector_->setCurrentIndex(boardSelector_->count() - 1);
     }
   }
-  boardSelector_->blockSignals(false);
+
+  if (boardSelector_->currentIndex() < 0 && boardSelector_->count() > 0) {
+    boardSelector_->setCurrentIndex(0);
+  }
 
   freesoundApiKey_->setText(state_.config.freesoundApiKey);
+  volumeRemoteSlider_->setValue(state_.config.volumeRemote);
+  volumeLocalSlider_->setValue(state_.config.volumeLocal);
+  muteOnClientCheckbox_->setChecked(!state_.config.playbackLocal);
+  muteMyselfDuringPlaybackCheckbox_->setChecked(state_.config.muteMyselfDuringPlayback);
+  showHotkeysOnButtonsCheckbox_->setChecked(state_.config.showHotkeysOnButtons);
+  disableHotkeysCheckbox_->setChecked(!state_.config.globalHotkeysEnabled);
+
+  const BoardRecord* board = activeBoard();
+  rowsSpin_->setValue(board ? qMax(1, board->rows) : 1);
+  colsSpin_->setValue(board ? qMax(1, board->cols) : 1);
+  rebuildingUi_ = false;
+
   cellButtons_.clear();
 
   while (QLayoutItem* item = gridLayout_->takeAt(0)) {
@@ -504,11 +670,11 @@ void MainWindow::rebuild() {
     delete item;
   }
 
-  const BoardRecord* board = activeBoard();
   if (board) {
+    const int safeCols = qMax(1, board->cols);
     for (int index = 0; index < board->cells.size(); ++index) {
-      const int row = index / board->cols;
-      const int col = index % board->cols;
+      const int row = index / safeCols;
+      const int col = index % safeCols;
       QString label = QStringLiteral("+");
       QString soundId;
       if (!board->cells[index].soundId.isEmpty()) {
@@ -521,7 +687,7 @@ void MainWindow::rebuild() {
         }
       }
 
-      auto* button = new QPushButton(label, this);
+      auto* button = new QPushButton(buildCellButtonLabel(board->cells[index], label), this);
       button->setMinimumHeight(72);
       gridLayout_->addWidget(button, row, col);
       cellButtons_.push_back(button);

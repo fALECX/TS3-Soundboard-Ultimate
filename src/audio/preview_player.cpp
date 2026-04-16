@@ -4,6 +4,7 @@
 #include <mmsystem.h>
 
 #include <QDir>
+#include <QtGlobal>
 
 namespace rpsu {
 
@@ -34,6 +35,14 @@ PreviewPlayer::~PreviewPlayer() {
   stop();
 }
 
+void PreviewPlayer::setVolume(double volume) {
+  volume_ = qBound(0.0, volume, 1.0);
+  if (!currentSoundId_.isEmpty()) {
+    const int scaled = qBound(0, static_cast<int>(volume_ * 1000.0), 1000);
+    sendMciCommand(QStringLiteral("setaudio %1 volume to %2").arg(alias_).arg(scaled));
+  }
+}
+
 bool PreviewPlayer::playFile(const QString& soundId, const QString& path, int* durationMs, QString* errorMessage) {
   if (isPlaying(soundId)) {
     stop();
@@ -55,6 +64,8 @@ bool PreviewPlayer::playFile(const QString& soundId, const QString& path, int* d
   }
 
   sendMciCommand(QStringLiteral("set %1 time format milliseconds").arg(alias_));
+  const int scaledVolume = qBound(0, static_cast<int>(volume_ * 1000.0), 1000);
+  sendMciCommand(QStringLiteral("setaudio %1 volume to %2").arg(alias_).arg(scaledVolume));
 
   QString durationValue;
   if (sendMciCommand(QStringLiteral("status %1 length").arg(alias_), &durationValue)) {

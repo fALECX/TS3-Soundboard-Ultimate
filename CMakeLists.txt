@@ -7,6 +7,7 @@ project(rp_soundboard_ultimate_ts3_plugin VERSION 0.2.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOMOC_COMPILER_PREDEFINES OFF)
 set(CMAKE_AUTOUIC OFF)
 set(CMAKE_AUTORCC OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -29,6 +30,14 @@ set(PLUGIN_RUNTIME_SOURCES
   src/core/models.cpp
   src/core/storage.cpp
   src/core/youtube_service.cpp
+  src/engine/playback_engine.cpp
+  src/engine/upstream/SampleBuffer.cpp
+  src/engine/upstream/SampleProducerThread.cpp
+  src/engine/upstream/Sampler.cpp
+  src/engine/upstream/SoundInfo.cpp
+  src/engine/upstream/TalkStateManager.cpp
+  src/engine/upstream/inputfileffmpeg.cpp
+  src/audio/audio_decoder.cpp
   src/audio/preview_player.cpp
   src/audio/wav_decoder.cpp
   src/audio/mixer.cpp
@@ -41,6 +50,17 @@ set(HEADERS
   src/core/models.h
   src/core/storage.h
   src/core/youtube_service.h
+  src/engine/playback_engine.h
+  src/engine/upstream/SampleBuffer.h
+  src/engine/upstream/SampleProducer.h
+  src/engine/upstream/SampleProducerThread.h
+  src/engine/upstream/SampleSource.h
+  src/engine/upstream/Sampler.h
+  src/engine/upstream/SoundInfo.h
+  src/engine/upstream/TalkStateManager.h
+  src/engine/upstream/inputfile.h
+  src/engine/upstream/peakmeter.h
+  src/audio/audio_decoder.h
   src/audio/preview_player.h
   src/audio/wav_decoder.h
   src/audio/mixer.h
@@ -59,6 +79,7 @@ target_include_directories(${PLUGIN_NAME}
 
 target_compile_definitions(${PLUGIN_NAME}
   PRIVATE
+    RPSU_ENABLE_TS3_ROUTING
     QT_NO_KEYWORDS
     NOMINMAX
 )
@@ -94,6 +115,7 @@ target_link_libraries(${PLUGIN_RUNTIME_NAME}
 
 target_compile_definitions(${PLUGIN_RUNTIME_NAME}
   PRIVATE
+    RPSU_ENABLE_TS3_ROUTING
     QT_NO_KEYWORDS
     NOMINMAX
 )
@@ -113,6 +135,14 @@ add_executable(rpsu_ui_preview
   src/core/models.cpp
   src/core/storage.cpp
   src/core/youtube_service.cpp
+  src/engine/playback_engine.cpp
+  src/engine/upstream/SampleBuffer.cpp
+  src/engine/upstream/SampleProducerThread.cpp
+  src/engine/upstream/Sampler.cpp
+  src/engine/upstream/SoundInfo.cpp
+  src/engine/upstream/TalkStateManager.cpp
+  src/engine/upstream/inputfileffmpeg.cpp
+  src/audio/audio_decoder.cpp
   src/audio/preview_player.cpp
   src/audio/wav_decoder.cpp
   src/audio/mixer.cpp
@@ -121,6 +151,17 @@ add_executable(rpsu_ui_preview
   src/core/models.h
   src/core/storage.h
   src/core/youtube_service.h
+  src/engine/playback_engine.h
+  src/engine/upstream/SampleBuffer.h
+  src/engine/upstream/SampleProducer.h
+  src/engine/upstream/SampleProducerThread.h
+  src/engine/upstream/SampleSource.h
+  src/engine/upstream/Sampler.h
+  src/engine/upstream/SoundInfo.h
+  src/engine/upstream/TalkStateManager.h
+  src/engine/upstream/inputfile.h
+  src/engine/upstream/peakmeter.h
+  src/audio/audio_decoder.h
   src/audio/preview_player.h
   src/audio/wav_decoder.h
   src/audio/mixer.h
@@ -130,6 +171,7 @@ add_executable(rpsu_ui_preview
 target_include_directories(rpsu_ui_preview
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/pluginsdk/include
 )
 
 target_link_libraries(rpsu_ui_preview
@@ -216,6 +258,7 @@ if(TARGET Qt${QT_VERSION_MAJOR}::qmake)
 endif()
 
 get_filename_component(RPSU_COMPILER_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+find_program(RPSU_FFMPEG_EXE ffmpeg.exe)
 install(FILES
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/yt-dlp.exe"
   "${RPSU_COMPILER_BIN_DIR}/libstdc++-6.dll"
@@ -224,6 +267,9 @@ install(FILES
   DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR}
   OPTIONAL
 )
+if(RPSU_FFMPEG_EXE)
+  install(FILES "${RPSU_FFMPEG_EXE}" DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR} OPTIONAL)
+endif()
 
 install(TARGETS rpsu_ui_preview
   RUNTIME DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR}

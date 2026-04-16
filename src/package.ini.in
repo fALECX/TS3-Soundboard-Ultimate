@@ -3,5 +3,4 @@ Type = Plugin
 Author = OpenAI Codex
 Version = @RPSU_PACKAGE_VERSION@
 Platforms = win64
-Description = TeamSpeak plugin shim for RP Soundboard Ultimate that launches the dashboard externally when the native runtime is unavailable.
-This package installs through TeamSpeak's built-in package installer, the same way as classic TS3 plugins.
+Description = Native TeamSpeak 3 soundboard plugin for RP Soundboard Ultimate.

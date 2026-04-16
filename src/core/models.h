@@ -46,7 +46,11 @@ struct BoardRecord {
 struct PluginConfig {
   bool firstRunComplete = false;
   QString freesoundApiKey;
-  double masterVolume = 0.8;
+  int volumeRemote = 80;
+  int volumeLocal = 80;
+  bool playbackLocal = true;
+  bool muteMyselfDuringPlayback = false;
+  bool showHotkeysOnButtons = false;
   bool globalHotkeysEnabled = true;
 };
 

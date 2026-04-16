@@ -8,11 +8,14 @@
 #include "src/core/youtube_service.h"
 
 class QComboBox;
+class QCheckBox;
 class QGridLayout;
 class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
+class QSlider;
+class QSpinBox;
 class QTableWidget;
 class QFrame;
 
@@ -34,9 +37,17 @@ class MainWindow : public QWidget {
   std::function<QVector<YouTubeSearchResult>(const QString& query, int limit, QString* errorMessage)> onYouTubeSearch;
   std::function<QString(const YouTubeSearchResult& result, QString* errorMessage)> onYouTubeDownload;
   std::function<void(const QString& apiKey)> onFreesoundApiKeyChanged;
+  std::function<void(int value)> onVolumeRemoteChanged;
+  std::function<void(int value)> onVolumeLocalChanged;
+  std::function<void(bool enabled)> onPlaybackLocalChanged;
+  std::function<void(bool enabled)> onMuteMyselfDuringPlaybackChanged;
+  std::function<void(bool enabled)> onShowHotkeysOnButtonsChanged;
+  std::function<void(bool enabled)> onGlobalHotkeysEnabledChanged;
+  std::function<void(int rows, int cols)> onActiveBoardSizeChanged;
 
  private:
   void rebuild();
+  QString buildCellButtonLabel(const Cell& cell, const QString& fallbackText) const;
   const BoardRecord* activeBoard() const;
   void setSelectedCell(int cellIndex);
   void handleCellClick(int cellIndex, const QString& soundId);
@@ -53,7 +64,16 @@ class MainWindow : public QWidget {
   QPushButton* stopPreviewButton_ = nullptr;
   QLineEdit* freesoundApiKey_ = nullptr;
   QPushButton* youtubeButton_ = nullptr;
+  QSlider* volumeRemoteSlider_ = nullptr;
+  QSlider* volumeLocalSlider_ = nullptr;
+  QCheckBox* muteOnClientCheckbox_ = nullptr;
+  QCheckBox* muteMyselfDuringPlaybackCheckbox_ = nullptr;
+  QCheckBox* showHotkeysOnButtonsCheckbox_ = nullptr;
+  QCheckBox* disableHotkeysCheckbox_ = nullptr;
+  QSpinBox* rowsSpin_ = nullptr;
+  QSpinBox* colsSpin_ = nullptr;
   int selectedCellIndex_ = -1;
+  bool rebuildingUi_ = false;
   QVector<QPushButton*> cellButtons_;
 };
 

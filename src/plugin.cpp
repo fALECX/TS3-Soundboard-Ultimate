@@ -160,15 +160,51 @@ void ts3plugin_onMenuItemEvent(uint64 serverConnectionHandlerID, enum PluginMenu
   }
 }
 
+void ts3plugin_currentServerConnectionChanged(uint64 serverConnectionHandlerID) {
+  rpsu::PluginContext::instance().currentServerConnectionChanged(serverConnectionHandlerID);
+}
+
+void ts3plugin_onConnectStatusChangeEvent(uint64 serverConnectionHandlerID, int newStatus, unsigned int errorNumber) {
+  Q_UNUSED(errorNumber);
+  rpsu::PluginContext::instance().connectStatusChanged(serverConnectionHandlerID, newStatus);
+}
+
+void ts3plugin_onUpdateClientEvent(
+  uint64 serverConnectionHandlerID,
+  anyID clientID,
+  anyID invokerID,
+  const char* invokerName,
+  const char* invokerUniqueIdentifier
+) {
+  Q_UNUSED(invokerID);
+  Q_UNUSED(invokerName);
+  Q_UNUSED(invokerUniqueIdentifier);
+  rpsu::PluginContext::instance().updateClientEvent(serverConnectionHandlerID, clientID);
+}
+
+void ts3plugin_onTalkStatusChangeEvent(uint64 serverConnectionHandlerID, int status, int isReceivedWhisper, anyID clientID) {
+  rpsu::PluginContext::instance().talkStatusChanged(serverConnectionHandlerID, status, isReceivedWhisper, clientID);
+}
+
 void ts3plugin_onHotkeyEvent(const char* keyword) {
   rpsu::PluginContext::instance().playHotkey(QString::fromUtf8(keyword ? keyword : ""));
 }
 
 void ts3plugin_onEditCapturedVoiceDataEvent(uint64 serverConnectionHandlerID, short* samples, int sampleCount, int channels, int* edited) {
-  Q_UNUSED(serverConnectionHandlerID);
-  if (rpsu::PluginContext::instance().mixCaptured(samples, sampleCount, channels) && edited) {
-    *edited = 1;
+  if (rpsu::PluginContext::instance().mixCaptured(serverConnectionHandlerID, samples, sampleCount, channels) && edited) {
+    *edited |= 0x1;
   }
+}
+
+void ts3plugin_onEditMixedPlaybackVoiceDataEvent(
+  uint64 serverConnectionHandlerID,
+  short* samples,
+  int sampleCount,
+  int channels,
+  const unsigned int* channelSpeakerArray,
+  unsigned int* channelFillMask
+) {
+  rpsu::PluginContext::instance().mixPlayback(serverConnectionHandlerID, samples, sampleCount, channels, channelSpeakerArray, channelFillMask);
 }
 
 }  // extern "C"

@@ -2,14 +2,21 @@
 
 #include <QFileDialog>
 #include <QDir>
+#include <QHash>
 #include <QMessageBox>
 #include <QTimer>
+#include <QtGlobal>
 
-#include "src/audio/mixer.h"
+#include "pluginsdk/include/ts3_functions.h"
 #include "src/audio/preview_player.h"
 #include "src/core/storage.h"
+#include "src/engine/playback_engine.h"
 #include "src/core/youtube_service.h"
 #include "src/ui/main_window.h"
+
+#ifdef RPSU_ENABLE_TS3_ROUTING
+#include "src/plugin.h"
+#endif
 
 namespace rpsu {
 
@@ -22,12 +29,18 @@ class PluginContext {
 
   bool initialize() {
     state_ = storage_.loadState();
-    mixer_.setMasterVolume(state_.config.masterVolume);
+    playbackEngine_.onPreviewStatusChanged = [this](const QString& title, int durationMs, bool playing) {
+      updatePreviewUi(title, durationMs, playing);
+    };
+    playbackEngine_.initialize();
+    applyRuntimeConfig();
     storage_.saveState(state_);
     return true;
   }
 
   void shutdown() {
+    playbackEngine_.shutdown();
+    stopPlaybackRouting();
     if (window_) {
       window_->close();
       delete window_;
@@ -67,6 +80,43 @@ class PluginContext {
         state_.config.freesoundApiKey = apiKey;
         storage_.saveState(state_);
       };
+      window_->onVolumeRemoteChanged = [this](int value) {
+        state_.config.volumeRemote = qBound(0, value, 100);
+        playbackEngine_.setVolumeRemote(state_.config.volumeRemote);
+        storage_.saveState(state_);
+      };
+      window_->onVolumeLocalChanged = [this](int value) {
+        state_.config.volumeLocal = qBound(0, value, 100);
+        preview_.setVolume(static_cast<double>(state_.config.volumeLocal) / 100.0);
+        playbackEngine_.setVolumeLocal(state_.config.volumeLocal);
+        storage_.saveState(state_);
+      };
+      window_->onPlaybackLocalChanged = [this](bool enabled) {
+        state_.config.playbackLocal = enabled;
+        playbackEngine_.setPlaybackLocal(enabled);
+        if (!enabled) {
+          stopPreview();
+        }
+        storage_.saveState(state_);
+      };
+      window_->onMuteMyselfDuringPlaybackChanged = [this](bool enabled) {
+        state_.config.muteMyselfDuringPlayback = enabled;
+        playbackEngine_.setMuteMyselfDuringPlayback(enabled);
+        storage_.saveState(state_);
+      };
+      window_->onShowHotkeysOnButtonsChanged = [this](bool enabled) {
+        state_.config.showHotkeysOnButtons = enabled;
+        storage_.saveState(state_);
+        refreshWindow();
+      };
+      window_->onGlobalHotkeysEnabledChanged = [this](bool enabled) {
+        state_.config.globalHotkeysEnabled = enabled;
+        storage_.saveState(state_);
+        refreshWindow();
+      };
+      window_->onActiveBoardSizeChanged = [this](int rows, int cols) {
+        resizeActiveBoard(rows, cols);
+      };
     }
 
     refreshWindow();
@@ -86,6 +136,10 @@ class PluginContext {
   }
 
   void playHotkey(const QString& keyword) {
+    if (!state_.config.globalHotkeysEnabled) {
+      return;
+    }
+
     if (keyword.startsWith(QStringLiteral("board:"))) {
       state_.activeBoardId = keyword.mid(6);
       storage_.saveState(state_);
@@ -119,35 +173,66 @@ class PluginContext {
         continue;
       }
 
-      const QString filePath = QDir(storage_.soundsDir()).filePath(sound.filename);
-      QString previewError;
-      int previewDurationMs = 0;
-      const bool previewStarted = preview_.playFile(sound.soundId, filePath, &previewDurationMs, &previewError);
-      if (previewStarted) {
-        updatePreviewUi(sound.displayName, previewDurationMs, preview_.isPlaying(sound.soundId));
-        if (previewClearTimer_) {
-          previewClearTimer_->stop();
-          if (previewDurationMs > 0) {
-            previewClearTimer_->start(previewDurationMs + 250);
-          }
-        }
-      } else if (window_ && !previewError.isEmpty()) {
-        window_->setPreviewStatus(QStringLiteral("Preview failed: %1").arg(previewError), 0, false);
-      }
-
       QString error;
-      if (mixer_.playSound(sound, storage_.soundsDir(), &error) || previewStarted) {
+      bool started = false;
+#ifdef RPSU_ENABLE_TS3_ROUTING
+      started = playbackEngine_.playSound(sound, storage_.soundsDir(), &error);
+#else
+      const QString filePath = QDir(storage_.soundsDir()).filePath(sound.filename);
+      int previewDurationMs = 0;
+      QString previewError;
+      started = preview_.playFile(sound.soundId, filePath, &previewDurationMs, &previewError);
+      if (!started && error.isEmpty()) {
+        error = previewError;
+      }
+      if (started) {
+        updatePreviewUi(sound.displayName, previewDurationMs, true);
+      }
+#endif
+
+      if (started) {
         sound.playCount += 1;
         sound.lastPlayedAt = nowIso();
         storage_.saveState(state_);
+      }
+      if (!started && !error.isEmpty() && window_) {
+        window_->setPreviewStatus(QStringLiteral("Playback failed: %1").arg(error), 0, false);
       }
       return;
     }
   }
 
-  bool mixCaptured(short* samples, int sampleCount, int channels) {
-    return mixer_.mixIntoCaptured(samples, sampleCount, channels);
+  bool mixCaptured(uint64 serverConnectionHandlerID, short* samples, int sampleCount, int channels) {
+    return playbackEngine_.mixCaptured(serverConnectionHandlerID, samples, sampleCount, channels);
   }
+
+  bool mixPlayback(uint64 serverConnectionHandlerID, short* samples, int sampleCount, int channels, const unsigned int* channelSpeakerArray, unsigned int* channelFillMask) {
+    playbackEngine_.mixPlayback(serverConnectionHandlerID, samples, sampleCount, channels, channelSpeakerArray, channelFillMask);
+    return true;
+  }
+
+#ifdef RPSU_ENABLE_TS3_ROUTING
+  void currentServerConnectionChanged(uint64 serverConnectionHandlerID) {
+    playbackEngine_.currentServerConnectionChanged(serverConnectionHandlerID);
+  }
+
+  void connectStatusChanged(uint64 serverConnectionHandlerID, int newStatus) {
+    playbackEngine_.connectStatusChanged(serverConnectionHandlerID, newStatus);
+  }
+
+  void updateClientEvent(uint64 serverConnectionHandlerID, anyID clientID) {
+    playbackEngine_.updateClientEvent(serverConnectionHandlerID, clientID);
+  }
+
+  void talkStatusChanged(uint64 serverConnectionHandlerID, int status, int isReceivedWhisper, anyID clientID) {
+    playbackEngine_.talkStatusChanged(serverConnectionHandlerID, status, isReceivedWhisper, clientID);
+  }
+#else
+  void currentServerConnectionChanged(unsigned long long) {}
+  void connectStatusChanged(unsigned long long, int) {}
+  void updateClientEvent(unsigned long long, int) {}
+  void talkStatusChanged(unsigned long long, int, int, int) {}
+#endif
 
  private:
   PluginContext() {
@@ -159,6 +244,7 @@ class PluginContext {
   }
 
   ~PluginContext() {
+    stopPlaybackRouting();
     if (previewClearTimer_) {
       previewClearTimer_->stop();
       delete previewClearTimer_;
@@ -167,6 +253,7 @@ class PluginContext {
   }
 
   void stopPreview() {
+    playbackEngine_.stopPlayback();
     preview_.stop();
     if (previewClearTimer_) {
       previewClearTimer_->stop();
@@ -179,6 +266,56 @@ class PluginContext {
       window_->setPreviewStatus(title, durationMs, playing);
     }
   }
+
+  void applyRuntimeConfig() {
+    playbackEngine_.setVolumeRemote(qBound(0, state_.config.volumeRemote, 100));
+    playbackEngine_.setVolumeLocal(qBound(0, state_.config.volumeLocal, 100));
+    playbackEngine_.setPlaybackLocal(state_.config.playbackLocal);
+    playbackEngine_.setMuteMyselfDuringPlayback(state_.config.muteMyselfDuringPlayback);
+    preview_.setVolume(static_cast<double>(qBound(0, state_.config.volumeLocal, 100)) / 100.0);
+  }
+
+  void resizeActiveBoard(int rows, int cols) {
+    const int nextRows = qBound(1, rows, 50);
+    const int nextCols = qBound(1, cols, 50);
+    const int nextTotal = nextRows * nextCols;
+
+    for (BoardRecord& board : state_.boards) {
+      if (board.id != state_.activeBoardId) {
+        continue;
+      }
+
+      if (board.rows == nextRows && board.cols == nextCols) {
+        return;
+      }
+
+      const QVector<Cell> oldCells = board.cells;
+      QVector<Cell> newCells;
+      newCells.resize(nextTotal);
+
+      const int copied = qMin(oldCells.size(), nextTotal);
+      for (int index = 0; index < copied; ++index) {
+        newCells[index] = oldCells[index];
+      }
+
+      for (int index = nextTotal; index < oldCells.size(); ++index) {
+        if (!oldCells[index].soundId.isEmpty()) {
+          board.unassignedSoundIds.push_back(oldCells[index].soundId);
+        }
+      }
+
+      board.rows = nextRows;
+      board.cols = nextCols;
+      board.cells = newCells;
+      storage_.saveState(state_);
+      refreshWindow();
+      return;
+    }
+  }
+
+  void startPlaybackRouting() {}
+  void reapplyPlaybackRouting() {}
+  void stopPlaybackRouting() {}
 
   void assignSoundToCell(const QString& soundId, int cellIndex) {
     if (cellIndex < 0) {
@@ -245,7 +382,7 @@ class PluginContext {
 
   StorageManager storage_;
   AppState state_;
-  AudioMixer mixer_;
+  PlaybackEngine playbackEngine_;
   PreviewPlayer preview_;
   YouTubeService youtube_;
   MainWindow* window_ = nullptr;

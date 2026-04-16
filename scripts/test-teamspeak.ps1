@@ -1,150 +1,205 @@
+param(
+  [switch]$Build,
+  [switch]$StartTeamSpeak,
+  [switch]$StopTeamSpeak,
+  [string]$BuildDir
+)
+
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$stagePlugins = Join-Path $repoRoot 'build_mingw\stage\plugins'
+if (-not $BuildDir) {
+  $msvcQt5Build = Join-Path $repoRoot 'build_msvc_qt5'
+  $msvcBuild = Join-Path $repoRoot 'build_msvc_nmake'
+  $mingwBuild = Join-Path $repoRoot 'build_mingw'
+  if (Test-Path $msvcQt5Build) {
+    $BuildDir = $msvcQt5Build
+  } elseif (Test-Path $msvcBuild) {
+    $BuildDir = $msvcBuild
+  } else {
+    $BuildDir = $mingwBuild
+  }
+}
+
+$buildDir = $BuildDir
+$installDir = Join-Path $buildDir 'install'
+$installPlugins = Join-Path $installDir 'plugins'
+$installSupport = Join-Path $installPlugins 'rp_soundboard_ultimate'
 $tsRoot = 'C:\Program Files\TeamSpeak 3 Client'
 $tsExe = Join-Path $tsRoot 'ts3client_win64.exe'
 $tsPlugins = Join-Path $env:APPDATA 'TS3Client\plugins'
 $tsPluginSupport = Join-Path $tsPlugins 'rp_soundboard_ultimate'
 $tsLogs = Join-Path $env:APPDATA 'TS3Client\logs'
-$pluginPrefix = 'rp_soundboard_ultimate'
+$loaderLog = Join-Path $env:APPDATA 'TS3Client\rpsu_loader.log'
 
-if (-not (Test-Path $stagePlugins)) {
-  throw "Missing staged plugin directory: $stagePlugins"
+function Get-TeamSpeakProcess {
+  Get-Process -Name 'ts3client_win64' -ErrorAction SilentlyContinue
 }
 
-if (-not (Test-Path $tsExe)) {
-  throw "Missing TeamSpeak executable: $tsExe"
+function Stop-TeamSpeakIfRequested {
+  $process = Get-TeamSpeakProcess
+  if (-not $process) {
+    return
+  }
+
+  try {
+    $process | Stop-Process -Force
+    Start-Sleep -Seconds 2
+  } catch {
+    throw "TeamSpeak is running and could not be stopped from this shell. Close it manually or rerun this script from the same elevation level as TeamSpeak."
+  }
+}
+
+if ($Build) {
+  if ($buildDir -like '*build_msvc_*') {
+    $msvcCommand = "call ""C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"" && ""C:\Program Files\CMake\bin\cmake.exe"" --build ""$buildDir"" && ""C:\Program Files\CMake\bin\cmake.exe"" --install ""$buildDir"" --prefix ""$installDir"""
+    & cmd /c $msvcCommand
+    if ($LASTEXITCODE -ne 0) {
+      throw 'MSVC build or install staging failed.'
+    }
+  } else {
+    & cmake --build $buildDir --config Release
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Build failed.'
+    }
+
+    & cmake --install $buildDir --config Release --prefix $installDir
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Install staging failed.'
+    }
+  }
+}
+
+if (-not (Test-Path $installPlugins)) {
+  throw "Missing staged plugin directory: $installPlugins"
+}
+if (-not (Test-Path $installSupport)) {
+  throw "Missing staged plugin support directory: $installSupport"
+}
+
+if ($StopTeamSpeak -or $StartTeamSpeak) {
+  Stop-TeamSpeakIfRequested
+} elseif (Get-TeamSpeakProcess) {
+  throw 'TeamSpeak is running. Close it first, or rerun with -StopTeamSpeak.'
 }
 
 New-Item -ItemType Directory -Force -Path $tsPlugins | Out-Null
-New-Item -ItemType Directory -Force -Path $tsLogs | Out-Null
 New-Item -ItemType Directory -Force -Path $tsPluginSupport | Out-Null
+New-Item -ItemType Directory -Force -Path $tsLogs | Out-Null
 
-$existing = Get-Process | Where-Object { $_.ProcessName -eq 'ts3client_win64' }
-if ($existing) {
-  try {
-    $existing | Stop-Process -Force
-  } catch {
-    throw "TeamSpeak is already running and could not be stopped from this shell. Close TeamSpeak manually, then rerun scripts\test-teamspeak.ps1."
+$rootPluginFiles = @(
+  'rp_soundboard_ultimate_win64.dll'
+)
+
+$legacyLooseFiles = @(
+  'Qt5Core.dll',
+  'Qt5Gui.dll',
+  'Qt5Network.dll',
+  'Qt5Widgets.dll',
+  'libgcc_s_seh-1.dll',
+  'libstdc++-6.dll',
+  'libwinpthread-1.dll',
+  'ffmpeg.exe',
+  'yt-dlp.exe',
+  'rp_soundboard_ultimate_runtime.bin',
+  'rpsu_ui_preview.exe'
+)
+
+$pluginDirs = @(
+  'platforms',
+  'rp_soundboard_ultimate'
+)
+
+foreach ($name in $rootPluginFiles + $legacyLooseFiles) {
+  $target = Join-Path $tsPlugins $name
+  if (Test-Path -LiteralPath $target) {
+    Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
   }
-  Start-Sleep -Seconds 2
+}
+
+foreach ($name in $pluginDirs) {
+  $target = Join-Path $tsPlugins $name
+  if (Test-Path -LiteralPath $target) {
+    Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+foreach ($name in $rootPluginFiles) {
+  $source = Join-Path $installPlugins $name
+  if (Test-Path -LiteralPath $source) {
+    Copy-Item -LiteralPath $source -Destination (Join-Path $tsPlugins $name) -Force
+  }
+}
+
+Get-ChildItem -LiteralPath $installSupport -Force | ForEach-Object {
+  $destination = Join-Path $tsPluginSupport $_.Name
+  Copy-Item -LiteralPath $_.FullName -Destination $destination -Recurse -Force
+}
+
+$null = robocopy $installSupport $tsPluginSupport /MIR /NFL /NDL /NJH /NJS /NP
+$robocopyExit = $LASTEXITCODE
+if ($robocopyExit -ge 8) {
+  throw "robocopy support sync failed with exit code $robocopyExit"
 }
 
 $latestBefore = Get-ChildItem $tsLogs -Filter 'ts3client_*.log' -ErrorAction SilentlyContinue |
   Sort-Object LastWriteTime -Descending |
   Select-Object -First 1
+$loaderBefore = if (Test-Path $loaderLog) { Get-Item $loaderLog } else { $null }
+$loaderBeforeLineCount = if ($loaderBefore) { (Get-Content $loaderLog -ErrorAction SilentlyContinue).Count } else { 0 }
 
-$rootFiles = @(
-  'rp_soundboard_ultimate_win64.dll'
-)
-
-$supportFiles = @(
-  'yt-dlp.exe',
-  'rpsu_ui_preview.exe',
-  'rp_soundboard_ultimate_runtime.bin',
-  'Qt5Core.dll',
-  'Qt5Gui.dll',
-  'Qt5Network.dll',
-  'Qt5Widgets.dll',
-  'libgcc_s_seh-1.dll',
-  'libstdc++-6.dll',
-  'libwinpthread-1.dll'
-)
-
-$legacyRootFiles = @(
-  'yt-dlp.exe',
-  'rp_soundboard_ultimate_runtime.bin',
-  'rpsu_ui_preview.exe',
-  'Qt5Core.dll',
-  'Qt5Gui.dll',
-  'Qt5Network.dll',
-  'Qt5Widgets.dll',
-  'libgcc_s_seh-1.dll',
-  'libstdc++-6.dll',
-  'libwinpthread-1.dll'
-)
-
-foreach ($name in $legacyRootFiles) {
-  $legacyPath = Join-Path $tsPlugins $name
-  if (Test-Path $legacyPath) {
-    Remove-Item -LiteralPath $legacyPath -Force
+$started = $null
+if ($StartTeamSpeak) {
+  if (-not (Test-Path $tsExe)) {
+    throw "Missing TeamSpeak executable: $tsExe"
   }
+
+  $started = Start-Process -FilePath $tsExe -PassThru
+  Start-Sleep -Seconds 8
 }
 
-$existingDashboard = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq 'rpsu_ui_preview' }
-if ($existingDashboard) {
-  $existingDashboard | Stop-Process -Force -ErrorAction SilentlyContinue
-}
-
-$legacyPlatformsDir = Join-Path $tsPlugins 'platforms'
-if (Test-Path $legacyPlatformsDir) {
-  Remove-Item -LiteralPath $legacyPlatformsDir -Recurse -Force
-}
-
-foreach ($name in $rootFiles) {
-  $source = Join-Path $stagePlugins $name
-  if (-not (Test-Path $source)) {
-    throw "Missing staged file: $source"
-  }
-  Copy-Item -LiteralPath $source -Destination (Join-Path $tsPlugins $name) -Force
-}
-
-$supportSourceDir = Join-Path $stagePlugins 'rp_soundboard_ultimate'
-foreach ($name in $supportFiles) {
-  $source = Join-Path $supportSourceDir $name
-  if (-not (Test-Path $source)) {
-    throw "Missing staged file: $source"
-  }
-  Copy-Item -LiteralPath $source -Destination (Join-Path $tsPluginSupport $name) -Force
-}
-
-$platformSource = Join-Path $supportSourceDir 'platforms\qwindows.dll'
-$platformDestDir = Join-Path $tsPluginSupport 'platforms'
-New-Item -ItemType Directory -Force -Path $platformDestDir | Out-Null
-Copy-Item -LiteralPath $platformSource -Destination (Join-Path $platformDestDir 'qwindows.dll') -Force
-
-$started = Start-Process -FilePath $tsExe -PassThru
-Start-Sleep -Seconds 8
-
-$pluginDll = (Join-Path $tsPlugins 'rp_soundboard_ultimate_win64.dll').Replace('\', '\\')
-$invokeSource = @"
-using System;
-using System.Runtime.InteropServices;
-
-public static class RpsuPluginInvoke {
-  [DllImport("$pluginDll", CallingConvention = CallingConvention.Cdecl)]
-  public static extern void ts3plugin_configure(IntPtr handle, IntPtr parent);
-}
-"@
-
-Add-Type -TypeDefinition $invokeSource -Language CSharp
-[RpsuPluginInvoke]::ts3plugin_configure([IntPtr]::Zero, [IntPtr]::Zero)
-Start-Sleep -Seconds 3
-
-$dashboardProcess = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq 'rpsu_ui_preview' } | Select-Object -First 1
-
-$latestAfter = Get-ChildItem $tsLogs -Filter 'ts3client_*.log' |
+$latestAfter = Get-ChildItem $tsLogs -Filter 'ts3client_*.log' -ErrorAction SilentlyContinue |
   Sort-Object LastWriteTime -Descending |
   Select-Object -First 1
 
-if (-not $latestAfter) {
-  throw 'No TeamSpeak log found after launch.'
+$logLines = @()
+if ($latestAfter) {
+  $logLines = Select-String -Path $latestAfter.FullName -Pattern 'rp_soundboard_ultimate|Initializing RP Soundboard Ultimate plugin|loaded in safe mode|runtime init failed|Failed to load plugin|LoadLibrary error|Required plugin function|Api version is not compatible' |
+    ForEach-Object { $_.Line }
 }
 
-$logText = Get-Content -LiteralPath $latestAfter.FullName -Raw
-$pluginLines = Select-String -InputObject $logText -Pattern 'rp_soundboard_ultimate|LoadLibrary error|Failed to load plugin|qstrcmp|qHash|Einsprungpunkt|entry point' |
-  ForEach-Object { $_.Line }
-
-$result = [pscustomobject]@{
-  launched_process_id = $started.Id
-  log_file = $latestAfter.FullName
-  latest_log_was_new = if ($latestBefore) { $latestAfter.FullName -ne $latestBefore.FullName } else { $true }
-  deployed_loader_timestamp = (Get-Item (Join-Path $tsPlugins 'rp_soundboard_ultimate_win64.dll')).LastWriteTime
-  deployed_runtime_timestamp = (Get-Item (Join-Path $tsPluginSupport 'rp_soundboard_ultimate_runtime.bin')).LastWriteTime
-  dashboard_started = [bool]$dashboardProcess
-  dashboard_process_id = if ($dashboardProcess) { $dashboardProcess.Id } else { $null }
-  plugin_log_lines = $pluginLines
+$loaderAfterLines = @()
+if (Test-Path $loaderLog) {
+  $loaderAfterLines = Get-Content $loaderLog -ErrorAction SilentlyContinue |
+    Select-Object -Skip $loaderBeforeLineCount |
+    ForEach-Object { $_.ToString() }
 }
 
-$result | ConvertTo-Json -Depth 4
+$runtimeInitialized = $false
+$safeModeLoaded = $false
+$runtimeLoadFailure = $false
+foreach ($line in $loaderAfterLines) {
+  if ($line -match 'ts3plugin_init: runtime initialized') {
+    $runtimeInitialized = $true
+  }
+  if ($line -match 'loaded in safe mode|safe mode init') {
+    $safeModeLoaded = $true
+  }
+  if ($line -match 'LoadLibraryExW failed|runtime init failed|missing one or more required exports') {
+    $runtimeLoadFailure = $true
+  }
+}
+
+[pscustomobject]@{
+  deployed_from = $installPlugins
+  deployed_to = $tsPlugins
+  launched_process_id = if ($started) { $started.Id } else { $null }
+  latest_log = if ($latestAfter) { $latestAfter.FullName } else { $null }
+  latest_log_was_new = if ($latestBefore -and $latestAfter) { $latestAfter.FullName -ne $latestBefore.FullName } elseif ($latestAfter) { $true } else { $false }
+  deployed_plugin_size = (Get-Item (Join-Path $tsPlugins 'rp_soundboard_ultimate_win64.dll')).Length
+  runtime_initialized = $runtimeInitialized
+  safe_mode_loaded = $safeModeLoaded
+  runtime_load_failure = $runtimeLoadFailure
+  plugin_log_lines = $logLines
+  loader_log_lines = $loaderAfterLines
+} | ConvertTo-Json -Depth 4

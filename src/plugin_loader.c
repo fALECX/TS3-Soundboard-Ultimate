@@ -45,8 +45,13 @@ typedef int (*Ts3RequestAutoloadFn)(void);
 typedef void (*Ts3InitMenusFn)(struct PluginMenuItem***, char**);
 typedef void (*Ts3InitHotkeysFn)(struct PluginHotkey***);
 typedef void (*Ts3OnMenuItemEventFn)(uint64, enum PluginMenuType, int, uint64);
+typedef void (*Ts3CurrentServerConnectionChangedFn)(uint64);
+typedef void (*Ts3OnConnectStatusChangeEventFn)(uint64, int, unsigned int);
+typedef void (*Ts3OnUpdateClientEventFn)(uint64, anyID, anyID, const char*, const char*);
+typedef void (*Ts3OnTalkStatusChangeEventFn)(uint64, int, int, anyID);
 typedef void (*Ts3OnHotkeyEventFn)(const char*);
 typedef void (*Ts3OnEditCapturedVoiceDataEventFn)(uint64, short*, int, int, int*);
+typedef void (*Ts3OnEditMixedPlaybackVoiceDataEventFn)(uint64, short*, int, int, const unsigned int*, unsigned int*);
 
 typedef struct RuntimeApi {
   HMODULE module;
@@ -68,11 +73,18 @@ typedef struct RuntimeApi {
   Ts3InitMenusFn initMenus;
   Ts3InitHotkeysFn initHotkeys;
   Ts3OnMenuItemEventFn onMenuItemEvent;
+  Ts3CurrentServerConnectionChangedFn currentServerConnectionChanged;
+  Ts3OnConnectStatusChangeEventFn onConnectStatusChangeEvent;
+  Ts3OnUpdateClientEventFn onUpdateClientEvent;
+  Ts3OnTalkStatusChangeEventFn onTalkStatusChangeEvent;
   Ts3OnHotkeyEventFn onHotkeyEvent;
   Ts3OnEditCapturedVoiceDataEventFn onEditCapturedVoiceDataEvent;
+  Ts3OnEditMixedPlaybackVoiceDataEventFn onEditMixedPlaybackVoiceDataEvent;
 } RuntimeApi;
 
 static RuntimeApi g_runtime;
+static char* g_registeredPluginId = NULL;
+static int g_runtimeLoadState = 0; /* 0=unknown, 1=loaded, -1=failed */
 
 static void append_debug_log(const char* message) {
   wchar_t appData[MAX_PATH];
@@ -116,6 +128,7 @@ static void clear_runtime(void) {
     FreeLibrary(g_runtime.module);
   }
   memset(&g_runtime, 0, sizeof(g_runtime));
+  g_runtimeLoadState = 0;
 }
 
 static int path_from_module(wchar_t* out, size_t outCount) {
@@ -158,9 +171,11 @@ static int load_runtime(void) {
   wchar_t runtimeDir[MAX_PATH];
   wchar_t runtimePath[MAX_PATH];
 
-  if (g_runtime.module) {
-    append_debug_log("load_runtime: runtime already loaded");
+  if (g_runtimeLoadState == 1 && g_runtime.module) {
     return 1;
+  }
+  if (g_runtimeLoadState == -1) {
+    return 0;
   }
 
   if (!path_from_module(dir, MAX_PATH)) {
@@ -184,6 +199,7 @@ static int load_runtime(void) {
   g_runtime.module = LoadLibraryExW(runtimePath, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
   if (!g_runtime.module) {
     append_last_error("load_runtime: LoadLibraryExW failed");
+    g_runtimeLoadState = -1;
     return 0;
   }
 
@@ -207,8 +223,23 @@ static int load_runtime(void) {
   g_runtime.initMenus = (Ts3InitMenusFn)GetProcAddress(g_runtime.module, "ts3plugin_initMenus");
   g_runtime.initHotkeys = (Ts3InitHotkeysFn)GetProcAddress(g_runtime.module, "ts3plugin_initHotkeys");
   g_runtime.onMenuItemEvent = (Ts3OnMenuItemEventFn)GetProcAddress(g_runtime.module, "ts3plugin_onMenuItemEvent");
+  g_runtime.currentServerConnectionChanged = (Ts3CurrentServerConnectionChangedFn)GetProcAddress(
+    g_runtime.module, "ts3plugin_currentServerConnectionChanged"
+  );
+  g_runtime.onConnectStatusChangeEvent = (Ts3OnConnectStatusChangeEventFn)GetProcAddress(
+    g_runtime.module, "ts3plugin_onConnectStatusChangeEvent"
+  );
+  g_runtime.onUpdateClientEvent = (Ts3OnUpdateClientEventFn)GetProcAddress(
+    g_runtime.module, "ts3plugin_onUpdateClientEvent"
+  );
+  g_runtime.onTalkStatusChangeEvent = (Ts3OnTalkStatusChangeEventFn)GetProcAddress(
+    g_runtime.module, "ts3plugin_onTalkStatusChangeEvent"
+  );
   g_runtime.onHotkeyEvent = (Ts3OnHotkeyEventFn)GetProcAddress(g_runtime.module, "ts3plugin_onHotkeyEvent");
   g_runtime.onEditCapturedVoiceDataEvent = (Ts3OnEditCapturedVoiceDataEventFn)GetProcAddress(g_runtime.module, "ts3plugin_onEditCapturedVoiceDataEvent");
+  g_runtime.onEditMixedPlaybackVoiceDataEvent = (Ts3OnEditMixedPlaybackVoiceDataEventFn)GetProcAddress(
+    g_runtime.module, "ts3plugin_onEditMixedPlaybackVoiceDataEvent"
+  );
 
   if (!g_runtime.name || !g_runtime.version || !g_runtime.apiVersion || !g_runtime.author ||
       !g_runtime.description || !g_runtime.setFunctionPointers || !g_runtime.init ||
@@ -219,10 +250,12 @@ static int load_runtime(void) {
       !g_runtime.onEditCapturedVoiceDataEvent) {
     append_debug_log("load_runtime: missing one or more required exports");
     clear_runtime();
+    g_runtimeLoadState = -1;
     return 0;
   }
 
   append_debug_log("load_runtime: runtime exports resolved");
+  g_runtimeLoadState = 1;
   return 1;
 }
 
@@ -300,40 +333,86 @@ static void show_dashboard_launch_error(void) {
 }
 
 PLUGINS_EXPORTDLL const char* ts3plugin_name(void) {
+  if (load_runtime() && g_runtime.name) {
+    return g_runtime.name();
+  }
   return kFallbackName;
 }
 
 PLUGINS_EXPORTDLL const char* ts3plugin_version(void) {
+  if (load_runtime() && g_runtime.version) {
+    return g_runtime.version();
+  }
   return kFallbackVersion;
 }
 
 PLUGINS_EXPORTDLL int ts3plugin_apiVersion(void) {
+  if (load_runtime() && g_runtime.apiVersion) {
+    return g_runtime.apiVersion();
+  }
   return 26;
 }
 
 PLUGINS_EXPORTDLL const char* ts3plugin_author(void) {
+  if (load_runtime() && g_runtime.author) {
+    return g_runtime.author();
+  }
   return kFallbackAuthor;
 }
 
 PLUGINS_EXPORTDLL const char* ts3plugin_description(void) {
+  if (load_runtime() && g_runtime.description) {
+    return g_runtime.description();
+  }
   return kFallbackDescription;
 }
 
 PLUGINS_EXPORTDLL void ts3plugin_setFunctionPointers(const struct TS3Functions funcs) {
   ts3Functions = funcs;
+  if (load_runtime() && g_runtime.setFunctionPointers) {
+    g_runtime.setFunctionPointers(funcs);
+  }
 }
 
 PLUGINS_EXPORTDLL int ts3plugin_init(void) {
-  append_debug_log("ts3plugin_init: safe mode init");
+  append_debug_log("ts3plugin_init: loader init");
+  if (load_runtime()) {
+    if (g_runtime.setFunctionPointers) {
+      g_runtime.setFunctionPointers(ts3Functions);
+    }
+    if (g_registeredPluginId && g_runtime.registerPluginID) {
+      g_runtime.registerPluginID(g_registeredPluginId);
+    }
+    if (g_runtime.init && g_runtime.init() != 0) {
+      append_debug_log("ts3plugin_init: runtime init failed");
+      clear_runtime();
+      log_ts_message("RP Soundboard Ultimate runtime init failed, falling back to safe mode");
+      return 0;
+    }
+    append_debug_log("ts3plugin_init: runtime initialized");
+    return 0;
+  }
+
   log_ts_message("RP Soundboard Ultimate loaded in safe mode");
   return 0;
 }
 
 PLUGINS_EXPORTDLL void ts3plugin_shutdown(void) {
-  append_debug_log("ts3plugin_shutdown: safe mode shutdown");
+  append_debug_log("ts3plugin_shutdown: loader shutdown");
+  if (g_runtime.shutdown) {
+    g_runtime.shutdown();
+  }
+  clear_runtime();
+  if (g_registeredPluginId) {
+    free(g_registeredPluginId);
+    g_registeredPluginId = NULL;
+  }
 }
 
 PLUGINS_EXPORTDLL int ts3plugin_offersConfigure(void) {
+  if (load_runtime() && g_runtime.offersConfigure) {
+    return g_runtime.offersConfigure();
+  }
   return PLUGIN_OFFERS_CONFIGURE_NEW_THREAD;
 }
 
@@ -351,14 +430,38 @@ PLUGINS_EXPORTDLL void ts3plugin_configure(void* handle, void* qParentWidget) {
 }
 
 PLUGINS_EXPORTDLL void ts3plugin_registerPluginID(const char* id) {
-  (void)id;
+  if (g_registeredPluginId) {
+    free(g_registeredPluginId);
+    g_registeredPluginId = NULL;
+  }
+  if (id) {
+    const size_t size = strlen(id) + 1;
+    g_registeredPluginId = (char*)malloc(size);
+    if (g_registeredPluginId) {
+      memcpy(g_registeredPluginId, id, size);
+    }
+  }
+
+  if (load_runtime() && g_runtime.registerPluginID) {
+    g_runtime.registerPluginID(id);
+  }
 }
 
 PLUGINS_EXPORTDLL const char* ts3plugin_commandKeyword(void) {
+  if (load_runtime() && g_runtime.commandKeyword) {
+    const char* keyword = g_runtime.commandKeyword();
+    if (keyword && keyword[0] != '\0') {
+      return keyword;
+    }
+  }
   return kFallbackCommandKeyword;
 }
 
 PLUGINS_EXPORTDLL int ts3plugin_processCommand(uint64 serverConnectionHandlerID, const char* command) {
+  if (load_runtime() && g_runtime.processCommand) {
+    return g_runtime.processCommand(serverConnectionHandlerID, command);
+  }
+
   (void)serverConnectionHandlerID;
   if (command && (_stricmp(command, "show") == 0 || _stricmp(command, "reload") == 0)) {
     return launch_dashboard_process() ? 0 : 1;
@@ -367,14 +470,26 @@ PLUGINS_EXPORTDLL int ts3plugin_processCommand(uint64 serverConnectionHandlerID,
 }
 
 PLUGINS_EXPORTDLL void ts3plugin_freeMemory(void* data) {
-  free(data);
+  if (g_runtime.module && g_runtime.freeMemory) {
+    g_runtime.freeMemory(data);
+  } else {
+    free(data);
+  }
 }
 
 PLUGINS_EXPORTDLL int ts3plugin_requestAutoload(void) {
+  if (load_runtime() && g_runtime.requestAutoload) {
+    return g_runtime.requestAutoload();
+  }
   return 1;
 }
 
 PLUGINS_EXPORTDLL void ts3plugin_initMenus(struct PluginMenuItem*** menuItems, char** menuIcon) {
+  if (load_runtime() && g_runtime.initMenus) {
+    g_runtime.initMenus(menuItems, menuIcon);
+    return;
+  }
+
   (void)menuIcon;
   *menuItems = (struct PluginMenuItem**)malloc(sizeof(struct PluginMenuItem*) * 2);
   if (!*menuItems) {
@@ -385,11 +500,21 @@ PLUGINS_EXPORTDLL void ts3plugin_initMenus(struct PluginMenuItem*** menuItems, c
 }
 
 PLUGINS_EXPORTDLL void ts3plugin_initHotkeys(struct PluginHotkey*** hotkeys) {
+  if (load_runtime() && g_runtime.initHotkeys) {
+    g_runtime.initHotkeys(hotkeys);
+    return;
+  }
+
   *hotkeys = (struct PluginHotkey**)malloc(sizeof(struct PluginHotkey*));
   (*hotkeys)[0] = NULL;
 }
 
 PLUGINS_EXPORTDLL void ts3plugin_onMenuItemEvent(uint64 serverConnectionHandlerID, enum PluginMenuType type, int menuItemID, uint64 selectedItemID) {
+  if (load_runtime() && g_runtime.onMenuItemEvent) {
+    g_runtime.onMenuItemEvent(serverConnectionHandlerID, type, menuItemID, selectedItemID);
+    return;
+  }
+
   (void)serverConnectionHandlerID;
   (void)type;
   (void)selectedItemID;
@@ -400,14 +525,72 @@ PLUGINS_EXPORTDLL void ts3plugin_onMenuItemEvent(uint64 serverConnectionHandlerI
   }
 }
 
+PLUGINS_EXPORTDLL void ts3plugin_currentServerConnectionChanged(uint64 serverConnectionHandlerID) {
+  if (load_runtime() && g_runtime.currentServerConnectionChanged) {
+    g_runtime.currentServerConnectionChanged(serverConnectionHandlerID);
+  }
+}
+
+PLUGINS_EXPORTDLL void ts3plugin_onConnectStatusChangeEvent(uint64 serverConnectionHandlerID, int newStatus, unsigned int errorNumber) {
+  if (load_runtime() && g_runtime.onConnectStatusChangeEvent) {
+    g_runtime.onConnectStatusChangeEvent(serverConnectionHandlerID, newStatus, errorNumber);
+  }
+}
+
+PLUGINS_EXPORTDLL void ts3plugin_onUpdateClientEvent(
+  uint64 serverConnectionHandlerID, anyID clientID, anyID invokerID, const char* invokerName,
+  const char* invokerUniqueIdentifier
+) {
+  if (load_runtime() && g_runtime.onUpdateClientEvent) {
+    g_runtime.onUpdateClientEvent(
+      serverConnectionHandlerID, clientID, invokerID, invokerName, invokerUniqueIdentifier
+    );
+  }
+}
+
+PLUGINS_EXPORTDLL void ts3plugin_onTalkStatusChangeEvent(uint64 serverConnectionHandlerID, int status, int isReceivedWhisper, anyID clientID) {
+  if (load_runtime() && g_runtime.onTalkStatusChangeEvent) {
+    g_runtime.onTalkStatusChangeEvent(serverConnectionHandlerID, status, isReceivedWhisper, clientID);
+  }
+}
+
 PLUGINS_EXPORTDLL void ts3plugin_onHotkeyEvent(const char* keyword) {
+  if (load_runtime() && g_runtime.onHotkeyEvent) {
+    g_runtime.onHotkeyEvent(keyword);
+    return;
+  }
+
   (void)keyword;
 }
 
 PLUGINS_EXPORTDLL void ts3plugin_onEditCapturedVoiceDataEvent(uint64 serverConnectionHandlerID, short* samples, int sampleCount, int channels, int* edited) {
+  if (load_runtime() && g_runtime.onEditCapturedVoiceDataEvent) {
+    g_runtime.onEditCapturedVoiceDataEvent(serverConnectionHandlerID, samples, sampleCount, channels, edited);
+    return;
+  }
+
   (void)serverConnectionHandlerID;
   (void)samples;
   (void)sampleCount;
   (void)channels;
   (void)edited;
+}
+
+PLUGINS_EXPORTDLL void ts3plugin_onEditMixedPlaybackVoiceDataEvent(
+  uint64 serverConnectionHandlerID, short* samples, int sampleCount, int channels,
+  const unsigned int* channelSpeakerArray, unsigned int* channelFillMask
+) {
+  if (load_runtime() && g_runtime.onEditMixedPlaybackVoiceDataEvent) {
+    g_runtime.onEditMixedPlaybackVoiceDataEvent(
+      serverConnectionHandlerID, samples, sampleCount, channels, channelSpeakerArray, channelFillMask
+    );
+    return;
+  }
+
+  (void)serverConnectionHandlerID;
+  (void)samples;
+  (void)sampleCount;
+  (void)channels;
+  (void)channelSpeakerArray;
+  (void)channelFillMask;
 }

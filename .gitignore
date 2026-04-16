@@ -2,12 +2,13 @@ node_modules/
 dist/
 out/
 build/
-build_fix/
-build_mingw/
+build_*/
 release/
 cmake-build-*/
 aqtinstall.log
 deploy/package.ini
+tmp_*/
+RP-Soundboard/
 
 npm-debug.log*
 yarn-debug.log*
@@ -18,14 +19,6 @@ grid-config.json
 
 sounds/*
 !sounds/.gitkeep
-!sounds/cigarette-light.wav
-!sounds/cigarette-inhale.wav
-!sounds/bone-crack.wav
-!sounds/handcuffs-click.wav
-!sounds/medkit-open.wav
-!sounds/police-radio-chatter.wav
-!sounds/cash-count.wav
-!sounds/car-lock-beep.wav
 
 resources/*
 !resources/.gitkeep

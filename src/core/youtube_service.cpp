@@ -10,6 +10,10 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include "src/core/models.h"
 
 namespace rpsu {
@@ -48,12 +52,40 @@ QString findWingetTool(const QString& executableName) {
   return it.hasNext() ? it.next() : QString();
 }
 
+#ifdef _WIN32
+QString moduleDirectory() {
+  HMODULE module = nullptr;
+  if (!GetModuleHandleExW(
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        reinterpret_cast<LPCWSTR>(&moduleDirectory), &module)) {
+    return {};
+  }
+
+  wchar_t buffer[MAX_PATH] = {0};
+  const DWORD length = GetModuleFileNameW(module, buffer, MAX_PATH);
+  if (length == 0 || length >= MAX_PATH) {
+    return {};
+  }
+
+  return QFileInfo(QString::fromWCharArray(buffer)).absolutePath();
+}
+#else
+QString moduleDirectory() {
+  return QCoreApplication::applicationDirPath();
+}
+#endif
+
 }  // namespace
 
 QString YouTubeService::resolveYtDlpPath(QString* errorMessage) const {
-  const QString bundledPath = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("yt-dlp.exe"));
-  if (QFileInfo::exists(bundledPath)) {
-    return bundledPath;
+  const QStringList bundledCandidates = {
+    QDir(moduleDirectory()).filePath(QStringLiteral("yt-dlp.exe")),
+    QDir(moduleDirectory()).filePath(QStringLiteral("rp_soundboard_ultimate/yt-dlp.exe"))
+  };
+  for (const QString& bundledPath : bundledCandidates) {
+    if (QFileInfo::exists(bundledPath)) {
+      return bundledPath;
+    }
   }
 
   const QString pathTool = runWhereCommand(QStringLiteral("yt-dlp"));
@@ -68,6 +100,16 @@ QString YouTubeService::resolveYtDlpPath(QString* errorMessage) const {
 }
 
 QString YouTubeService::resolveFfmpegPath(QString* errorMessage) const {
+  const QStringList bundledCandidates = {
+    QDir(moduleDirectory()).filePath(QStringLiteral("ffmpeg.exe")),
+    QDir(moduleDirectory()).filePath(QStringLiteral("rp_soundboard_ultimate/ffmpeg.exe"))
+  };
+  for (const QString& bundledPath : bundledCandidates) {
+    if (QFileInfo::exists(bundledPath)) {
+      return bundledPath;
+    }
+  }
+
   const QString localPath = runWhereCommand(QStringLiteral("ffmpeg"));
   if (!localPath.isEmpty()) {
     return localPath;

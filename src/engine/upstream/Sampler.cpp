@@ -1,0 +1,297 @@
+#include "src/engine/upstream/Sampler.h"
+
+#include <algorithm>
+#include <cassert>
+#include <cmath>
+#include <cstring>
+
+#include "pluginsdk/include/teamspeak/public_definitions.h"
+#include "src/engine/upstream/SoundInfo.h"
+#include "src/engine/upstream/inputfile.h"
+
+static_assert(sizeof(short) == 2, "Short is weird size");
+
+#define MAX_SAMPLEBUFFER_SIZE (48000 * 5)
+#define AMP_THRESH (SHRT_MAX / 2)
+
+Sampler::Sampler()
+    : m_sbCapture(2, MAX_SAMPLEBUFFER_SIZE),
+      m_sbPlayback(2, MAX_SAMPLEBUFFER_SIZE),
+      m_sampleProducerThread(),
+      m_inputFile(nullptr),
+      m_peakMeterCapture(0.01f, 0.00005f, 24000),
+      m_peakMeterPlayback(0.01f, 0.00005f, 24000),
+      m_volumeDivider(1),
+      m_volumeFactor(1.0f),
+      m_globalDbSettingLocal(-1.0),
+      m_globalDbSettingRemote(-1.0),
+      m_soundDbSetting(0.0),
+      m_state(eSILENT),
+      m_localPlayback(true),
+      m_muteMyself(false) {
+  assert(m_state.is_lock_free());
+}
+
+Sampler::~Sampler() = default;
+
+void Sampler::init() {
+  m_sampleProducerThread.addBuffer(&m_sbCapture);
+  m_sampleProducerThread.addBuffer(&m_sbPlayback, m_localPlayback);
+  m_sampleProducerThread.start();
+}
+
+void Sampler::shutdown() {
+  std::lock_guard<std::mutex> Lock(m_mutex);
+  if (m_inputFile) {
+    m_inputFile->close();
+    delete m_inputFile;
+    m_inputFile = nullptr;
+  }
+  m_sampleProducerThread.stop();
+}
+
+int Sampler::fetchSamples(
+  SampleBuffer& sb,
+  PeakMeter& pm,
+  short* samples,
+  int count,
+  int channels,
+  bool eraseConsumed,
+  int ciLeft,
+  int ciRight,
+  bool overLeft,
+  bool overRight
+) {
+  Q_UNUSED(eraseConsumed);
+  if (m_state == ePAUSED) {
+    return 0;
+  }
+
+  SampleBuffer::Lock sbl(sb.getMutex());
+  if (sb.avail() == 0) {
+    return 0;
+  }
+
+  if (overLeft) {
+    if (channels == 1) {
+      std::memset(samples, 0, count * sizeof(short));
+    } else {
+      for (int i = 0; i < count; i++) {
+        samples[i * channels + ciLeft] = 0;
+      }
+    }
+  }
+
+  if (overRight && channels > 1) {
+    for (int i = 0; i < count; i++) {
+      samples[i * channels + ciRight] = 0;
+    }
+  }
+
+  const int write = std::min(count, sb.avail());
+  const short* const in = sb.getBufferData();
+  short* const out = samples;
+
+  if (channels == 1) {
+    for (int i = 0; i < write; i++) {
+      const float sample = out[i] + m_volumeFactor * (static_cast<float>(in[i * 2]) + static_cast<float>(in[i * 2 + 1])) * 0.5f;
+      pm.process(sample);
+      out[i] = pm.limit(sample, AMP_THRESH);
+    }
+  } else {
+    for (int i = 0; i < write; i++) {
+      const float sample0 = out[i * channels + ciLeft] + m_volumeFactor * static_cast<float>(in[i * 2]);
+      const float sample1 = out[i * channels + ciRight] + m_volumeFactor * static_cast<float>(in[i * 2 + 1]);
+      pm.process(fabs(sample0) > fabs(sample1) ? sample0 : sample1);
+      out[i * channels + ciLeft] = pm.limit(sample0, AMP_THRESH);
+      out[i * channels + ciRight] = pm.limit(sample1, AMP_THRESH);
+    }
+  }
+
+  sb.consume(nullptr, write, true);
+  return write;
+}
+
+int Sampler::findChannelId(unsigned int channel, const unsigned int* channelSpeakerArray, int count) {
+  for (int i = 0; i < count; i++) {
+    if (channelSpeakerArray[i] & channel) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+int Sampler::fetchInputSamples(short* samples, int count, int channels, bool* finished) {
+  std::lock_guard<std::mutex> Lock(m_mutex);
+  setVolumeDb(m_globalDbSettingRemote + m_soundDbSetting);
+  const int written = fetchSamples(m_sbCapture, m_peakMeterCapture, samples, count, channels, true, 0, 1, m_muteMyself, m_muteMyself);
+
+  if (m_state == ePLAYING && m_inputFile && m_inputFile->done()) {
+    SampleBuffer::Lock sbl(m_sbCapture.getMutex());
+    if (m_sbCapture.avail() == 0) {
+      m_state = eSILENT;
+      if (finished) {
+        *finished = true;
+      }
+      if (onStopPlaying) {
+        onStopPlaying();
+      }
+    }
+  }
+
+  return written;
+}
+
+int Sampler::fetchOutputSamples(short* samples, int count, int channels, const unsigned int* channelSpeakerArray, unsigned int* channelFillMask) {
+  std::lock_guard<std::mutex> Lock(m_mutex);
+  const unsigned int bitMaskLeft = SPEAKER_FRONT_LEFT | SPEAKER_HEADPHONES_LEFT;
+  const unsigned int bitMaskRight = SPEAKER_FRONT_RIGHT | SPEAKER_HEADPHONES_RIGHT;
+  const int ciLeft = findChannelId(bitMaskLeft, channelSpeakerArray, channels);
+  const int ciRight = findChannelId(bitMaskRight, channelSpeakerArray, channels);
+  setVolumeDb(m_globalDbSettingLocal + m_soundDbSetting);
+  const int written = fetchSamples(
+    m_sbPlayback,
+    m_peakMeterPlayback,
+    samples,
+    count,
+    channels,
+    true,
+    ciLeft,
+    ciRight,
+    (*channelFillMask & bitMaskLeft) == 0,
+    (*channelFillMask & bitMaskRight) == 0);
+
+  if (written > 0) {
+    *channelFillMask |= (bitMaskLeft | bitMaskRight);
+  }
+
+  if (m_state == ePLAYING_PREVIEW && m_inputFile && m_inputFile->done()) {
+    SampleBuffer::Lock sbl(m_sbPlayback.getMutex());
+    if (m_sbPlayback.avail() == 0) {
+      m_state = eSILENT;
+      if (onStopPlaying) {
+        onStopPlaying();
+      }
+    }
+  }
+
+  return written;
+}
+
+bool Sampler::playFile(const SoundInfo& sound) {
+  return playSoundInternal(sound, false);
+}
+
+bool Sampler::playPreview(const SoundInfo& sound) {
+  return playSoundInternal(sound, true);
+}
+
+void Sampler::stopPlayback() {
+  std::lock_guard<std::mutex> Lock(m_mutex);
+  stopSoundInternal();
+}
+
+#define VOLUMESCALER_EXPONENT 1.0
+#define VOLUMESCALER_DB_MIN -28.0
+void Sampler::setVolumeRemote(int vol) {
+  const double v = static_cast<double>(vol) / 100.0;
+  const double db = pow(1.0 - v, VOLUMESCALER_EXPONENT) * VOLUMESCALER_DB_MIN;
+  m_globalDbSettingRemote = db;
+  setVolumeDb(m_globalDbSettingRemote + m_soundDbSetting);
+}
+
+void Sampler::setVolumeLocal(int vol) {
+  const double v = static_cast<double>(vol) / 100.0;
+  const double db = pow(1.0 - v, VOLUMESCALER_EXPONENT) * VOLUMESCALER_DB_MIN;
+  m_globalDbSettingLocal = db;
+  setVolumeDb(m_globalDbSettingLocal + m_soundDbSetting);
+}
+
+void Sampler::setLocalPlayback(bool enabled) {
+  m_localPlayback = enabled;
+  m_sampleProducerThread.setBufferEnabled(&m_sbPlayback, enabled);
+}
+
+void Sampler::setMuteMyself(bool enabled) {
+  m_muteMyself = enabled;
+}
+
+void Sampler::setVolumeDb(double decibel) {
+  const double factor = pow(10.0, decibel / 10.0);
+  m_volumeFactor = static_cast<float>(factor);
+  m_volumeDivider = static_cast<int>(factor * (1 << volumeScaleExp) + 0.5);
+}
+
+void Sampler::stopSoundInternal() {
+  if (m_inputFile) {
+    m_state = eSILENT;
+    m_sampleProducerThread.setSource(nullptr);
+    m_inputFile->close();
+    delete m_inputFile;
+    m_inputFile = nullptr;
+
+    SampleBuffer::Lock sblc(m_sbCapture.getMutex());
+    SampleBuffer::Lock sblp(m_sbPlayback.getMutex());
+    m_sbCapture.consume(nullptr, m_sbCapture.avail());
+    m_sbPlayback.consume(nullptr, m_sbPlayback.avail());
+
+    if (onStopPlaying) {
+      onStopPlaying();
+    }
+  }
+}
+
+bool Sampler::playSoundInternal(const SoundInfo& sound, bool preview) {
+  std::lock_guard<std::mutex> Lock(m_mutex);
+  stopSoundInternal();
+
+  m_inputFile = CreateInputFileFFmpeg();
+  if (m_inputFile->open(sound.filename.toUtf8().constData(), sound.getStartTime(), sound.getPlayTime()) != 0) {
+    delete m_inputFile;
+    m_inputFile = nullptr;
+    return false;
+  }
+
+  m_soundDbSetting = static_cast<double>(sound.volume);
+  setVolumeDb(m_globalDbSettingLocal + m_soundDbSetting);
+
+  SampleBuffer::Lock sblc(m_sbCapture.getMutex());
+  SampleBuffer::Lock sblp(m_sbPlayback.getMutex());
+  m_sbCapture.consume(nullptr, m_sbCapture.avail());
+  m_sbPlayback.consume(nullptr, m_sbPlayback.avail());
+
+  if (preview) {
+    m_state = ePLAYING_PREVIEW;
+    m_sampleProducerThread.setBufferEnabled(&m_sbCapture, false);
+    m_sampleProducerThread.setBufferEnabled(&m_sbPlayback, true);
+  } else {
+    m_state = ePLAYING;
+    m_sampleProducerThread.setBufferEnabled(&m_sbCapture, true);
+  }
+
+  m_sampleProducerThread.setSource(m_inputFile);
+  if (onStartPlaying) {
+    onStartPlaying(preview, sound.filename);
+  }
+  return true;
+}
+
+void Sampler::pausePlayback() {
+  std::lock_guard<std::mutex> Lock(m_mutex);
+  if (m_state == ePLAYING) {
+    m_state = ePAUSED;
+    if (onPausePlaying) {
+      onPausePlaying();
+    }
+  }
+}
+
+void Sampler::unpausePlayback() {
+  std::lock_guard<std::mutex> Lock(m_mutex);
+  if (m_state == ePAUSED) {
+    m_state = ePLAYING;
+    if (onUnpausePlaying) {
+      onUnpausePlaying();
+    }
+  }
+}
