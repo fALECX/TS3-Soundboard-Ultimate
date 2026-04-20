@@ -120,6 +120,9 @@ class PluginContext {
       window_->onActiveBoardSizeChanged = [this](int rows, int cols) {
         resizeActiveBoard(rows, cols);
       };
+      window_->onSoundEmojiChanged = [this](const QString& soundId, const QString& emoji) {
+        changeSoundEmoji(soundId, emoji);
+      };
     }
 
     refreshWindow();
@@ -335,6 +338,17 @@ class PluginContext {
       storage_.saveState(state_);
       refreshWindow();
       return;
+    }
+  }
+
+  void changeSoundEmoji(const QString& soundId, const QString& emoji) {
+    for (SoundRecord& sound : state_.library) {
+      if (sound.soundId == soundId) {
+        sound.icon = emoji;
+        storage_.saveState(state_);
+        refreshWindow();
+        return;
+      }
     }
   }
 

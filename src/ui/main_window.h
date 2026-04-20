@@ -45,6 +45,7 @@ class MainWindow : public QWidget {
   std::function<void(bool enabled)> onShowHotkeysOnButtonsChanged;
   std::function<void(bool enabled)> onGlobalHotkeysEnabledChanged;
   std::function<void(int rows, int cols)> onActiveBoardSizeChanged;
+  std::function<void(const QString& soundId, const QString& emoji)> onSoundEmojiChanged;
 
  private:
   void rebuild();

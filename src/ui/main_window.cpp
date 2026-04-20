@@ -1,4 +1,5 @@
 #include "src/ui/main_window.h"
+#include "src/ui/emoji_picker.h"
 
 #include <chrono>
 #include <future>
@@ -699,20 +700,51 @@ void MainWindow::rebuild() {
       const int col = index % safeCols;
       QString label = QStringLiteral("+");
       QString soundId;
+      QString emoji = QStringLiteral("🔊");
       if (!board->cells[index].soundId.isEmpty()) {
         soundId = board->cells[index].soundId;
         for (const SoundRecord& sound : state_.library) {
           if (sound.soundId == soundId) {
             label = sound.displayName;
+            emoji = sound.icon;
             break;
           }
         }
       }
 
+      auto* cellWidget = new QWidget(this);
+      auto* cellLayout = new QVBoxLayout(cellWidget);
+      cellLayout->setContentsMargins(0, 0, 0, 0);
+      cellLayout->setSpacing(4);
+
+      auto* emojiButton = new QPushButton(emoji, this);
+      emojiButton->setStyleSheet(
+        QStringLiteral("QPushButton { font-size: 36px; border: none; background: transparent; padding: 8px; } "
+                       "QPushButton:hover { background: rgba(0, 0, 0, 0.05); border-radius: 4px; }"));
+      emojiButton->setMinimumHeight(60);
+      cellLayout->addWidget(emojiButton, 0, Qt::AlignCenter);
+
       auto* button = new QPushButton(buildCellButtonLabel(board->cells[index], label), this);
-      button->setMinimumHeight(72);
-      gridLayout_->addWidget(button, row, col);
+      button->setMinimumHeight(40);
+      cellLayout->addWidget(button);
+
+      gridLayout_->addWidget(cellWidget, row, col);
       cellButtons_.push_back(button);
+
+      const QString currentSoundId = soundId;
+      connect(emojiButton, &QPushButton::clicked, this, [this, currentSoundId]() {
+        if (currentSoundId.isEmpty()) {
+          statusLabel_->setText(QStringLiteral("Assign a sound to the cell first."));
+          return;
+        }
+        EmojiPicker picker(QString(), this);
+        if (picker.exec() == QDialog::Accepted) {
+          if (onSoundEmojiChanged) {
+            onSoundEmojiChanged(currentSoundId, picker.selectedEmoji());
+          }
+        }
+      });
+
       connect(button, &QPushButton::clicked, this, [this, index, soundId]() {
         handleCellClick(index, soundId);
       });
