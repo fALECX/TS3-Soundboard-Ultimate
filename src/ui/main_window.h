@@ -46,6 +46,7 @@ class MainWindow : public QWidget {
   std::function<void(bool enabled)> onGlobalHotkeysEnabledChanged;
   std::function<void(int rows, int cols)> onActiveBoardSizeChanged;
   std::function<void(const QString& soundId, const QString& emoji)> onSoundEmojiChanged;
+  std::function<void(const QString& soundId, const QString& displayName)> onSoundRenamed;
 
  private:
   void rebuild();
@@ -54,6 +55,7 @@ class MainWindow : public QWidget {
   void setSelectedCell(int cellIndex);
   void handleCellClick(int cellIndex, const QString& soundId);
   void openYouTubeDialog();
+  void showRenameDialog(const QString& soundId);
 
   AppState state_;
   QComboBox* boardSelector_ = nullptr;

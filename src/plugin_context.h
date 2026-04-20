@@ -123,6 +123,9 @@ class PluginContext {
       window_->onSoundEmojiChanged = [this](const QString& soundId, const QString& emoji) {
         changeSoundEmoji(soundId, emoji);
       };
+      window_->onSoundRenamed = [this](const QString& soundId, const QString& displayName) {
+        renameSoundDisplay(soundId, displayName);
+      };
     }
 
     refreshWindow();
@@ -345,6 +348,17 @@ class PluginContext {
     for (SoundRecord& sound : state_.library) {
       if (sound.soundId == soundId) {
         sound.icon = emoji;
+        storage_.saveState(state_);
+        refreshWindow();
+        return;
+      }
+    }
+  }
+
+  void renameSoundDisplay(const QString& soundId, const QString& displayName) {
+    for (SoundRecord& sound : state_.library) {
+      if (sound.soundId == soundId) {
+        sound.displayName = displayName;
         storage_.saveState(state_);
         refreshWindow();
         return;

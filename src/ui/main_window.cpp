@@ -19,6 +19,7 @@
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QMessageBox>
+#include <QMenu>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSlider>
@@ -612,6 +613,67 @@ void MainWindow::openYouTubeDialog() {
   dialog.exec();
 }
 
+void MainWindow::showRenameDialog(const QString& soundId) {
+  for (const SoundRecord& sound : state_.library) {
+    if (sound.soundId != soundId) {
+      continue;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Rename Sound"));
+    dialog.setModal(true);
+    dialog.resize(400, 150);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(12);
+
+    auto* label = new QLabel(QStringLiteral("Sound Name:"), &dialog);
+    layout->addWidget(label);
+
+    auto* nameEdit = new QLineEdit(&dialog);
+    nameEdit->setText(sound.displayName);
+    layout->addWidget(nameEdit);
+
+    auto* emojiLayout = new QHBoxLayout();
+    auto* emojiLabel = new QLabel(QStringLiteral("Icon:"), &dialog);
+    auto* emojiButton = new QPushButton(sound.icon, &dialog);
+    emojiButton->setMaximumWidth(60);
+    emojiButton->setStyleSheet(QStringLiteral("QPushButton { font-size: 24px; }"));
+    emojiLayout->addWidget(emojiLabel);
+    emojiLayout->addWidget(emojiButton);
+    emojiLayout->addStretch(1);
+    layout->addLayout(emojiLayout);
+
+    QString selectedEmoji = sound.icon;
+    connect(emojiButton, &QPushButton::clicked, &dialog, [this, &dialog, &selectedEmoji, emojiButton, sound]() {
+      EmojiPicker picker(sound.icon, &dialog);
+      if (picker.exec() == QDialog::Accepted) {
+        selectedEmoji = picker.selectedEmoji();
+        emojiButton->setText(selectedEmoji);
+      }
+    });
+
+    auto* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttonBox);
+
+    if (dialog.exec() == QDialog::Accepted) {
+      const QString newName = nameEdit->text().trimmed();
+      if (!newName.isEmpty()) {
+        if (onSoundRenamed) {
+          onSoundRenamed(soundId, newName);
+        }
+        if (selectedEmoji != sound.icon && onSoundEmojiChanged) {
+          onSoundEmojiChanged(soundId, selectedEmoji);
+        }
+      }
+    }
+    return;
+  }
+}
+
 void MainWindow::handleCellClick(int cellIndex, const QString& soundId) {
   setSelectedCell(cellIndex);
 
@@ -726,6 +788,7 @@ void MainWindow::rebuild() {
 
       auto* button = new QPushButton(buildCellButtonLabel(board->cells[index], label), this);
       button->setMinimumHeight(40);
+      button->setContextMenuPolicy(Qt::CustomContextMenu);
       cellLayout->addWidget(button);
 
       gridLayout_->addWidget(cellWidget, row, col);
@@ -743,6 +806,17 @@ void MainWindow::rebuild() {
             onSoundEmojiChanged(currentSoundId, picker.selectedEmoji());
           }
         }
+      });
+
+      connect(button, &QWidget::customContextMenuRequested, this, [this, currentSoundId](const QPoint&) {
+        if (currentSoundId.isEmpty()) {
+          return;
+        }
+        QMenu contextMenu;
+        contextMenu.addAction(QStringLiteral("Rename..."), this, [this, currentSoundId]() {
+          showRenameDialog(currentSoundId);
+        });
+        contextMenu.exec(QCursor::pos());
       });
 
       connect(button, &QPushButton::clicked, this, [this, index, soundId]() {
