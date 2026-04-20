@@ -593,19 +593,20 @@ void MainWindow::openYouTubeDialog() {
 
 void MainWindow::handleCellClick(int cellIndex, const QString& soundId) {
   setSelectedCell(cellIndex);
+
+  auto* currentItem = libraryList_->currentItem();
+  if (currentItem && onAssignSoundToCell) {
+    const QString newSoundId = currentItem->data(Qt::UserRole).toString();
+    const QString itemText = currentItem->text();
+    onAssignSoundToCell(newSoundId, cellIndex);
+    statusLabel_->setText(QStringLiteral("Assigned \"%1\" to the selected cell.").arg(itemText));
+    return;
+  }
+
   if (!soundId.isEmpty()) {
     if (onPlaySound) {
       onPlaySound(soundId);
     }
-    return;
-  }
-
-  auto* currentItem = libraryList_->currentItem();
-  if (currentItem && onAssignSoundToCell) {
-    const QString soundId = currentItem->data(Qt::UserRole).toString();
-    const QString itemText = currentItem->text();
-    onAssignSoundToCell(soundId, cellIndex);
-    statusLabel_->setText(QStringLiteral("Assigned \"%1\" to the selected cell.").arg(itemText));
     return;
   }
 
@@ -664,6 +665,7 @@ void MainWindow::rebuild() {
   rebuildingUi_ = false;
 
   cellButtons_.clear();
+  deleteButtons_.clear();
 
   while (QLayoutItem* item = gridLayout_->takeAt(0)) {
     delete item->widget();
@@ -673,7 +675,7 @@ void MainWindow::rebuild() {
   if (board) {
     const int safeCols = qMax(1, board->cols);
     for (int index = 0; index < board->cells.size(); ++index) {
-      const int row = index / safeCols;
+      const int row = (index / safeCols) * 2;
       const int col = index % safeCols;
       QString label = QStringLiteral("+");
       QString soundId;
@@ -693,6 +695,19 @@ void MainWindow::rebuild() {
       cellButtons_.push_back(button);
       connect(button, &QPushButton::clicked, this, [this, index, soundId]() {
         handleCellClick(index, soundId);
+      });
+
+      auto* deleteButton = new QPushButton(QStringLiteral("✕"), this);
+      deleteButton->setMaximumWidth(30);
+      deleteButton->setMaximumHeight(24);
+      deleteButton->setStyleSheet(QStringLiteral("QPushButton { color: #999; border: 1px solid #ddd; border-radius: 4px; padding: 0px; }"));
+      gridLayout_->addWidget(deleteButton, row + 1, col, Qt::AlignHCenter);
+      deleteButtons_.push_back(deleteButton);
+      connect(deleteButton, &QPushButton::clicked, this, [this, index]() {
+        if (onAssignSoundToCell) {
+          onAssignSoundToCell(QString(), index);
+          statusLabel_->setText(QStringLiteral("Cell cleared."));
+        }
       });
     }
   }

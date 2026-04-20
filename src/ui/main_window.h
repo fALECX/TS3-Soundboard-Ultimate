@@ -75,6 +75,7 @@ class MainWindow : public QWidget {
   int selectedCellIndex_ = -1;
   bool rebuildingUi_ = false;
   QVector<QPushButton*> cellButtons_;
+  QVector<QPushButton*> deleteButtons_;
 };
 
 }  // namespace rpsu
