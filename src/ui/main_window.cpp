@@ -926,7 +926,6 @@ void MainWindow::handleCellClick(int cellIndex, const QString& soundId) {
     return;
   }
 
-  auto* currentItem = libraryList_->currentItem();
   if (currentItem && onAssignSoundToCell) {
     onAssignSoundToCell(currentItem->data(Qt::UserRole).toString(), cellIndex);
     statusLabel_->setText(

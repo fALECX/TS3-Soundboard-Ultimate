@@ -417,29 +417,6 @@ class PluginContext {
   }
 
   bool previewYouTube(const YouTubeSearchResult& result, QString* errorMessage) {
-    const QString tempDir = QDir::temp().filePath(QStringLiteral("rpsu_yt_preview"));
-    QDir().mkpath(tempDir);
-
-    QString filename;
-    if (!youtube_.downloadAudio(result, tempDir, {}, &filename, errorMessage)) {
-      return false;
-    }
-
-    const QString filePath = QDir(tempDir).filePath(filename);
-    int durationMs = 0;
-    QString playError;
-    if (!preview_.playFile(QStringLiteral("yt_preview_") + result.id, filePath, &durationMs, &playError)) {
-      if (errorMessage && errorMessage->isEmpty()) {
-        *errorMessage = playError;
-      }
-      return false;
-    }
-
-    updatePreviewUi(result.title, durationMs, true);
-    return true;
-  }
-
-  bool previewYouTube(const YouTubeSearchResult& result, QString* errorMessage) {
     const QString previewRoot = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
                                   .filePath(QStringLiteral("rpsu_youtube_preview"));
     QDir().mkpath(previewRoot);
