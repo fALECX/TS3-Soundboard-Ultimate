@@ -1,4 +1,5 @@
 #include "src/ui/main_window.h"
+#include "src/ui/emoji_picker.h"
 
 #include <chrono>
 #include <future>
@@ -19,6 +20,7 @@
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QMessageBox>
+#include <QMenu>
 #include <QPixmap>
 #include <QPushButton>
 #include <QSignalBlocker>
@@ -354,8 +356,20 @@ class YouTubeSearchDialog : public QDialog {
           .arg(t.accentBg, t.accentBorder)
       );
 
-      connect(previewButton, &QPushButton::clicked, this, [result]() {
-        QDesktopServices::openUrl(QUrl(result.url));
+      connect(previewButton, &QPushButton::clicked, this, [this, result]() {
+        if (!owner_->onYouTubePreview) {
+          statusLabel_->setText(QStringLiteral("Preview is not available."));
+          return;
+        }
+        QString error;
+        const bool ok = runWithLoading(QStringLiteral("Preparing preview"), [this, &result, &error]() {
+          return owner_->onYouTubePreview(result, &error);
+        });
+        if (!ok) {
+          statusLabel_->setText(error.isEmpty() ? QStringLiteral("Preview failed.") : error);
+        } else {
+          statusLabel_->setText(QStringLiteral("Playing preview: %1").arg(result.title));
+        }
       });
       connect(downloadRowButton, &QPushButton::clicked, this, [this, index]() {
         resultsTable_->selectRow(index);
@@ -588,11 +602,17 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   previewBar_->setObjectName(QStringLiteral("previewBar"));
   auto* previewLayout = new QHBoxLayout(previewBar_);
   previewLayout->setContentsMargins(14, 8, 14, 8);
+  liveIndicator_ = new QLabel(previewBar_);
+  liveIndicator_->setFixedSize(12, 12);
+  liveIndicator_->setStyleSheet(QStringLiteral("background-color: #ef4444; border-radius: 6px;"));
+  liveIndicator_->setVisible(false);
   previewLabel_ = new QLabel(QStringLiteral("Preview stopped"), previewBar_);
   previewLabel_->setObjectName(QStringLiteral("previewLabel"));
   stopPreviewButton_ = new QPushButton(QStringLiteral("Stop Preview"), previewBar_);
   stopPreviewButton_->setObjectName(QStringLiteral("stopPreviewButton"));
   stopPreviewButton_->setEnabled(false);
+  previewLayout->addWidget(liveIndicator_);
+  previewLayout->addSpacing(8);
   previewLayout->addWidget(previewLabel_, 1);
   previewLayout->addWidget(stopPreviewButton_);
   contentLayout->addWidget(previewBar_);
@@ -800,12 +820,14 @@ void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool pla
   if (!playing || title.trimmed().isEmpty()) {
     previewLabel_->setText(QStringLiteral("Preview stopped"));
     stopPreviewButton_->setEnabled(false);
+    liveIndicator_->setVisible(false);
     return;
   }
   previewLabel_->setText(
     QStringLiteral("Playing: %1  [%2]").arg(title, formatDurationMs(durationMs))
   );
   stopPreviewButton_->setEnabled(true);
+  liveIndicator_->setVisible(true);
 }
 
 void MainWindow::setSelectedCell(int cellIndex) {
@@ -826,8 +848,79 @@ void MainWindow::openYouTubeDialog() {
   dlg.exec();
 }
 
+void MainWindow::showRenameDialog(const QString& soundId) {
+  for (const SoundRecord& sound : state_.library) {
+    if (sound.soundId != soundId) {
+      continue;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Rename Sound"));
+    dialog.setModal(true);
+    dialog.resize(400, 150);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(12);
+
+    auto* label = new QLabel(QStringLiteral("Sound Name:"), &dialog);
+    layout->addWidget(label);
+
+    auto* nameEdit = new QLineEdit(&dialog);
+    nameEdit->setText(sound.displayName);
+    layout->addWidget(nameEdit);
+
+    auto* emojiLayout = new QHBoxLayout();
+    auto* emojiLabel = new QLabel(QStringLiteral("Icon:"), &dialog);
+    auto* emojiButton = new QPushButton(sound.icon, &dialog);
+    emojiButton->setMaximumWidth(60);
+    emojiButton->setStyleSheet(QStringLiteral("QPushButton { font-size: 24px; }"));
+    emojiLayout->addWidget(emojiLabel);
+    emojiLayout->addWidget(emojiButton);
+    emojiLayout->addStretch(1);
+    layout->addLayout(emojiLayout);
+
+    QString selectedEmoji = sound.icon;
+    connect(emojiButton, &QPushButton::clicked, &dialog, [this, &dialog, &selectedEmoji, emojiButton, sound]() {
+      EmojiPicker picker(sound.icon, &dialog);
+      if (picker.exec() == QDialog::Accepted) {
+        selectedEmoji = picker.selectedEmoji();
+        emojiButton->setText(selectedEmoji);
+      }
+    });
+
+    auto* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttonBox);
+
+    if (dialog.exec() == QDialog::Accepted) {
+      const QString newName = nameEdit->text().trimmed();
+      if (!newName.isEmpty()) {
+        if (onSoundRenamed) {
+          onSoundRenamed(soundId, newName);
+        }
+        if (selectedEmoji != sound.icon && onSoundEmojiChanged) {
+          onSoundEmojiChanged(soundId, selectedEmoji);
+        }
+      }
+    }
+    return;
+  }
+}
+
 void MainWindow::handleCellClick(int cellIndex, const QString& soundId) {
   setSelectedCell(cellIndex);
+
+  auto* currentItem = libraryList_->currentItem();
+  if (currentItem && onAssignSoundToCell) {
+    const QString newSoundId = currentItem->data(Qt::UserRole).toString();
+    const QString itemText = currentItem->text();
+    onAssignSoundToCell(newSoundId, cellIndex);
+    statusLabel_->setText(QStringLiteral("Assigned \"%1\" to the selected cell.").arg(itemText));
+    return;
+  }
+
   if (!soundId.isEmpty()) {
     if (onPlaySound) onPlaySound(soundId);
     return;
@@ -889,6 +982,7 @@ void MainWindow::rebuild() {
   rebuildingUi_ = false;
 
   cellButtons_.clear();
+  deleteButtons_.clear();
   while (QLayoutItem* item = gridLayout_->takeAt(0)) {
     delete item->widget();
     delete item;
@@ -897,22 +991,82 @@ void MainWindow::rebuild() {
   if (board) {
     const int safeCols = qMax(1, board->cols);
     for (int index = 0; index < board->cells.size(); ++index) {
-      const int row = index / safeCols;
+      const int row = (index / safeCols) * 2;
       const int col = index % safeCols;
       QString label   = QStringLiteral("+");
       QString soundId;
+      QString emoji = QStringLiteral("🔊");
       if (!board->cells[index].soundId.isEmpty()) {
         soundId = board->cells[index].soundId;
         for (const SoundRecord& sound : state_.library) {
+          if (sound.soundId == soundId) {
+            label = sound.displayName;
+            emoji = sound.icon;
+            break;
+          }
           if (sound.soundId == soundId) { label = sound.displayName; break; }
         }
       }
+
+      auto* cellWidget = new QWidget(this);
+      auto* cellLayout = new QVBoxLayout(cellWidget);
+      cellLayout->setContentsMargins(0, 0, 0, 0);
+      cellLayout->setSpacing(4);
+
+      auto* emojiButton = new QPushButton(emoji, this);
+      emojiButton->setStyleSheet(
+        QStringLiteral("QPushButton { font-size: 36px; border: none; background: transparent; padding: 8px; } "
+                       "QPushButton:hover { background: rgba(0, 0, 0, 0.05); border-radius: 4px; }"));
+      emojiButton->setMinimumHeight(60);
+      cellLayout->addWidget(emojiButton, 0, Qt::AlignCenter);
       auto* button = new QPushButton(buildCellButtonLabel(board->cells[index], label), this);
-      button->setMinimumHeight(72);
-      gridLayout_->addWidget(button, row, col);
+      button->setMinimumHeight(40);
+      button->setContextMenuPolicy(Qt::CustomContextMenu);
+      cellLayout->addWidget(button);
+
+      gridLayout_->addWidget(cellWidget, row, col);
       cellButtons_.push_back(button);
+
+      const QString currentSoundId = soundId;
+      connect(emojiButton, &QPushButton::clicked, this, [this, currentSoundId]() {
+        if (currentSoundId.isEmpty()) {
+          statusLabel_->setText(QStringLiteral("Assign a sound to the cell first."));
+          return;
+        }
+        EmojiPicker picker(QString(), this);
+        if (picker.exec() == QDialog::Accepted) {
+          if (onSoundEmojiChanged) {
+            onSoundEmojiChanged(currentSoundId, picker.selectedEmoji());
+          }
+        }
+      });
+
+      connect(button, &QWidget::customContextMenuRequested, this, [this, currentSoundId](const QPoint&) {
+        if (currentSoundId.isEmpty()) {
+          return;
+        }
+        QMenu contextMenu;
+        contextMenu.addAction(QStringLiteral("Rename..."), this, [this, currentSoundId]() {
+          showRenameDialog(currentSoundId);
+        });
+        contextMenu.exec(QCursor::pos());
+      });
+
       connect(button, &QPushButton::clicked, this, [this, index, soundId]() {
         handleCellClick(index, soundId);
+      });
+
+      auto* deleteButton = new QPushButton(QStringLiteral("✕"), this);
+      deleteButton->setMaximumWidth(30);
+      deleteButton->setMaximumHeight(24);
+      deleteButton->setStyleSheet(QStringLiteral("QPushButton { color: #999; border: 1px solid #ddd; border-radius: 4px; padding: 0px; }"));
+      gridLayout_->addWidget(deleteButton, row + 1, col, Qt::AlignHCenter);
+      deleteButtons_.push_back(deleteButton);
+      connect(deleteButton, &QPushButton::clicked, this, [this, index]() {
+        if (onAssignSoundToCell) {
+          onAssignSoundToCell(QString(), index);
+          statusLabel_->setText(QStringLiteral("Cell cleared."));
+        }
       });
     }
   }

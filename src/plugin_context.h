@@ -81,6 +81,9 @@ class PluginContext {
       window_->onYouTubeDownload = [this](const YouTubeSearchResult& result, QString* errorMessage) {
         return downloadYouTube(result, errorMessage);
       };
+      window_->onYouTubePreview = [this](const YouTubeSearchResult& result, QString* errorMessage) {
+        return previewYouTube(result, errorMessage);
+      };
       window_->onFreesoundApiKeyChanged = [this](const QString& apiKey) {
         state_.config.freesoundApiKey = apiKey;
         storage_.saveState(state_);
@@ -121,6 +124,12 @@ class PluginContext {
       };
       window_->onActiveBoardSizeChanged = [this](int rows, int cols) {
         resizeActiveBoard(rows, cols);
+      };
+      window_->onSoundEmojiChanged = [this](const QString& soundId, const QString& emoji) {
+        changeSoundEmoji(soundId, emoji);
+      };
+      window_->onSoundRenamed = [this](const QString& soundId, const QString& displayName) {
+        renameSoundDisplay(soundId, displayName);
       };
     }
 
@@ -340,6 +349,28 @@ class PluginContext {
     }
   }
 
+  void changeSoundEmoji(const QString& soundId, const QString& emoji) {
+    for (SoundRecord& sound : state_.library) {
+      if (sound.soundId == soundId) {
+        sound.icon = emoji;
+        storage_.saveState(state_);
+        refreshWindow();
+        return;
+      }
+    }
+  }
+
+  void renameSoundDisplay(const QString& soundId, const QString& displayName) {
+    for (SoundRecord& sound : state_.library) {
+      if (sound.soundId == soundId) {
+        sound.displayName = displayName;
+        storage_.saveState(state_);
+        refreshWindow();
+        return;
+      }
+    }
+  }
+
   void importSound(int cellIndex) {
     if (!window_) {
       return;
@@ -383,6 +414,29 @@ class PluginContext {
     storage_.saveState(state_);
     refreshWindow();
     return sound.soundId;
+  }
+
+  bool previewYouTube(const YouTubeSearchResult& result, QString* errorMessage) {
+    const QString tempDir = QDir::temp().filePath(QStringLiteral("rpsu_yt_preview"));
+    QDir().mkpath(tempDir);
+
+    QString filename;
+    if (!youtube_.downloadAudio(result, tempDir, {}, &filename, errorMessage)) {
+      return false;
+    }
+
+    const QString filePath = QDir(tempDir).filePath(filename);
+    int durationMs = 0;
+    QString playError;
+    if (!preview_.playFile(QStringLiteral("yt_preview_") + result.id, filePath, &durationMs, &playError)) {
+      if (errorMessage && errorMessage->isEmpty()) {
+        *errorMessage = playError;
+      }
+      return false;
+    }
+
+    updatePreviewUi(result.title, durationMs, true);
+    return true;
   }
 
   bool previewYouTube(const YouTubeSearchResult& result, QString* errorMessage) {

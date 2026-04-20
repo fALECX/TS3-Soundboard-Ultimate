@@ -38,6 +38,7 @@ class MainWindow : public QWidget {
   std::function<QVector<YouTubeSearchResult>(const QString& query, int limit, QString* errorMessage)> onYouTubeSearch;
   std::function<bool(const YouTubeSearchResult& result, QString* errorMessage)> onYouTubePreview;
   std::function<QString(const YouTubeSearchResult& result, QString* errorMessage)> onYouTubeDownload;
+  std::function<bool(const YouTubeSearchResult& result, QString* errorMessage)> onYouTubePreview;
   std::function<void(const QString& apiKey)> onFreesoundApiKeyChanged;
   std::function<void(int value)> onVolumeRemoteChanged;
   std::function<void(int value)> onVolumeLocalChanged;
@@ -46,6 +47,8 @@ class MainWindow : public QWidget {
   std::function<void(bool enabled)> onShowHotkeysOnButtonsChanged;
   std::function<void(bool enabled)> onGlobalHotkeysEnabledChanged;
   std::function<void(int rows, int cols)> onActiveBoardSizeChanged;
+  std::function<void(const QString& soundId, const QString& emoji)> onSoundEmojiChanged;
+  std::function<void(const QString& soundId, const QString& displayName)> onSoundRenamed;
 
  private:
   void rebuild();
@@ -55,6 +58,7 @@ class MainWindow : public QWidget {
   void setSelectedCell(int cellIndex);
   void handleCellClick(int cellIndex, const QString& soundId);
   void openYouTubeDialog();
+  void showRenameDialog(const QString& soundId);
 
   AppState state_;
   QComboBox* boardSelector_ = nullptr;
@@ -64,6 +68,7 @@ class MainWindow : public QWidget {
   QLabel* statusLabel_ = nullptr;
   QFrame* previewBar_ = nullptr;
   QLabel* previewLabel_ = nullptr;
+  QLabel* liveIndicator_ = nullptr;
   QPushButton* stopPreviewButton_ = nullptr;
   QLineEdit* freesoundApiKey_ = nullptr;
   QPushButton* youtubeButton_ = nullptr;
@@ -82,6 +87,7 @@ class MainWindow : public QWidget {
   bool rebuildingUi_ = false;
   bool darkMode_ = false;
   QVector<QPushButton*> cellButtons_;
+  QVector<QPushButton*> deleteButtons_;
 };
 
 }  // namespace rpsu
