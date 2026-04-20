@@ -18,6 +18,7 @@ class QSlider;
 class QSpinBox;
 class QTableWidget;
 class QFrame;
+class QToolButton;
 
 namespace rpsu {
 
@@ -35,6 +36,7 @@ class MainWindow : public QWidget {
   std::function<void(int cellIndex)> onImportSound;
   std::function<void(const QString& soundId, int cellIndex)> onAssignSoundToCell;
   std::function<QVector<YouTubeSearchResult>(const QString& query, int limit, QString* errorMessage)> onYouTubeSearch;
+  std::function<bool(const YouTubeSearchResult& result, QString* errorMessage)> onYouTubePreview;
   std::function<QString(const YouTubeSearchResult& result, QString* errorMessage)> onYouTubeDownload;
   std::function<void(const QString& apiKey)> onFreesoundApiKeyChanged;
   std::function<void(int value)> onVolumeRemoteChanged;
@@ -47,6 +49,7 @@ class MainWindow : public QWidget {
 
  private:
   void rebuild();
+  void applyTheme();
   QString buildCellButtonLabel(const Cell& cell, const QString& fallbackText) const;
   const BoardRecord* activeBoard() const;
   void setSelectedCell(int cellIndex);
@@ -64,6 +67,7 @@ class MainWindow : public QWidget {
   QPushButton* stopPreviewButton_ = nullptr;
   QLineEdit* freesoundApiKey_ = nullptr;
   QPushButton* youtubeButton_ = nullptr;
+  QPushButton* importButton_ = nullptr;
   QSlider* volumeRemoteSlider_ = nullptr;
   QSlider* volumeLocalSlider_ = nullptr;
   QCheckBox* muteOnClientCheckbox_ = nullptr;
@@ -72,8 +76,11 @@ class MainWindow : public QWidget {
   QCheckBox* disableHotkeysCheckbox_ = nullptr;
   QSpinBox* rowsSpin_ = nullptr;
   QSpinBox* colsSpin_ = nullptr;
+  QToolButton* darkModeButton_ = nullptr;
+  QFrame* settingsFrame_ = nullptr;
   int selectedCellIndex_ = -1;
   bool rebuildingUi_ = false;
+  bool darkMode_ = false;
   QVector<QPushButton*> cellButtons_;
 };
 

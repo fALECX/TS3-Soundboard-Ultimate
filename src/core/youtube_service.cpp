@@ -276,4 +276,94 @@ bool YouTubeService::downloadAudio(
   return true;
 }
 
+bool YouTubeService::downloadPreviewAudio(
+  const YouTubeSearchResult& result,
+  const QString& previewDir,
+  QString* previewPath,
+  QString* errorMessage
+) const {
+  QString ytDlpError;
+  const QString ytDlpPath = resolveYtDlpPath(&ytDlpError);
+  if (ytDlpPath.isEmpty()) {
+    if (errorMessage) {
+      *errorMessage = ytDlpError;
+    }
+    return false;
+  }
+
+  QString ffmpegError;
+  const QString ffmpegPath = resolveFfmpegPath(&ffmpegError);
+  if (ffmpegPath.isEmpty()) {
+    if (errorMessage) {
+      *errorMessage = ffmpegError;
+    }
+    return false;
+  }
+
+  QDir dir(previewDir);
+  if (!dir.exists() && !QDir().mkpath(previewDir)) {
+    if (errorMessage) {
+      *errorMessage = QStringLiteral("Could not create the preview cache directory.");
+    }
+    return false;
+  }
+
+  const QString desiredFilename = sanitizeFilenameBase(result.title + QStringLiteral("-%1-preview").arg(result.id)) + QStringLiteral(".wav");
+  const QString absolutePreviewPath = dir.filePath(desiredFilename);
+  QFile::remove(absolutePreviewPath);
+
+  QProcess process;
+  process.setWorkingDirectory(previewDir);
+  process.start(
+    ytDlpPath,
+    {
+      result.url,
+      QStringLiteral("--extract-audio"),
+      QStringLiteral("--audio-format"),
+      QStringLiteral("wav"),
+      QStringLiteral("--audio-quality"),
+      QStringLiteral("0"),
+      QStringLiteral("--download-sections"),
+      QStringLiteral("*0-20"),
+      QStringLiteral("--force-keyframes-at-cuts"),
+      QStringLiteral("--ffmpeg-location"),
+      QFileInfo(ffmpegPath).absolutePath(),
+      QStringLiteral("--no-playlist"),
+      QStringLiteral("--no-warnings"),
+      QStringLiteral("-o"),
+      absolutePreviewPath
+    }
+  );
+
+  if (!process.waitForFinished(180000)) {
+    process.kill();
+    if (errorMessage) {
+      *errorMessage = QStringLiteral("YouTube preview timed out.");
+    }
+    return false;
+  }
+
+  if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+    if (errorMessage) {
+      *errorMessage = firstLine(QString::fromLocal8Bit(process.readAllStandardError()));
+      if (errorMessage->isEmpty()) {
+        *errorMessage = QStringLiteral("YouTube preview failed.");
+      }
+    }
+    return false;
+  }
+
+  if (!QFileInfo::exists(absolutePreviewPath)) {
+    if (errorMessage) {
+      *errorMessage = QStringLiteral("The YouTube preview did not produce a WAV file.");
+    }
+    return false;
+  }
+
+  if (previewPath) {
+    *previewPath = absolutePreviewPath;
+  }
+  return true;
+}
+
 }  // namespace rpsu

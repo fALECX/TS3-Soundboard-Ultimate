@@ -16,6 +16,12 @@ struct YouTubeSearchResult {
 class YouTubeService {
  public:
   QVector<YouTubeSearchResult> search(const QString& query, int limit, QString* errorMessage) const;
+  bool downloadPreviewAudio(
+    const YouTubeSearchResult& result,
+    const QString& previewDir,
+    QString* previewPath,
+    QString* errorMessage
+  ) const;
   bool downloadAudio(
     const YouTubeSearchResult& result,
     const QString& soundsDir,

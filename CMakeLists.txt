@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOMOC_COMPILER_PREDEFINES OFF)
 set(CMAKE_AUTOUIC OFF)
-set(CMAKE_AUTORCC OFF)
+set(CMAKE_AUTORCC ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if(NOT WIN32)
@@ -24,6 +24,10 @@ set(PLUGIN_RUNTIME_NAME "rp_soundboard_ultimate_runtime")
 set(RPSU_PLUGIN_SUPPORT_SUBDIR "plugins/rp_soundboard_ultimate")
 set(RPSU_PLUGINFILE_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/release" CACHE PATH "Output directory for the final ts3_plugin package")
 option(RPSU_MAKE_PLUGIN_FILE "Create the ts3_plugin file" OFF)
+
+set(RPSU_QRC_FILES
+  assets/assets.qrc
+)
 
 set(PLUGIN_RUNTIME_SOURCES
   src/plugin.cpp
@@ -42,6 +46,7 @@ set(PLUGIN_RUNTIME_SOURCES
   src/audio/wav_decoder.cpp
   src/audio/mixer.cpp
   src/ui/main_window.cpp
+  ${RPSU_QRC_FILES}
 )
 
 set(HEADERS
@@ -132,6 +137,7 @@ set_target_properties(${PLUGIN_RUNTIME_NAME} PROPERTIES
 
 add_executable(rpsu_ui_preview
   src/ui_preview_main.cpp
+  ${RPSU_QRC_FILES}
   src/core/models.cpp
   src/core/storage.cpp
   src/core/youtube_service.cpp

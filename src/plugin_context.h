@@ -2,8 +2,10 @@
 
 #include <QFileDialog>
 #include <QDir>
+#include <QFile>
 #include <QHash>
 #include <QMessageBox>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QtGlobal>
 
@@ -72,6 +74,9 @@ class PluginContext {
       };
       window_->onYouTubeSearch = [this](const QString& query, int limit, QString* errorMessage) {
         return youtube_.search(query, limit, errorMessage);
+      };
+      window_->onYouTubePreview = [this](const YouTubeSearchResult& result, QString* errorMessage) {
+        return previewYouTube(result, errorMessage);
       };
       window_->onYouTubeDownload = [this](const YouTubeSearchResult& result, QString* errorMessage) {
         return downloadYouTube(result, errorMessage);
@@ -380,6 +385,37 @@ class PluginContext {
     return sound.soundId;
   }
 
+  bool previewYouTube(const YouTubeSearchResult& result, QString* errorMessage) {
+    const QString previewRoot = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
+                                  .filePath(QStringLiteral("rpsu_youtube_preview"));
+    QDir().mkpath(previewRoot);
+
+    if (!lastPreviewPath_.isEmpty()) {
+      QFile::remove(lastPreviewPath_);
+      lastPreviewPath_.clear();
+    }
+
+    QString previewPath;
+    if (!youtube_.downloadPreviewAudio(result, previewRoot, &previewPath, errorMessage)) {
+      return false;
+    }
+
+    int previewDurationMs = 0;
+    QString previewError;
+    const QString previewSoundId = QStringLiteral("youtube_preview_%1").arg(result.id);
+    if (!preview_.playFile(previewSoundId, previewPath, &previewDurationMs, &previewError)) {
+      QFile::remove(previewPath);
+      if (errorMessage && errorMessage->isEmpty()) {
+        *errorMessage = previewError;
+      }
+      return false;
+    }
+
+    lastPreviewPath_ = previewPath;
+    updatePreviewUi(result.title, previewDurationMs, true);
+    return true;
+  }
+
   StorageManager storage_;
   AppState state_;
   PlaybackEngine playbackEngine_;
@@ -387,6 +423,7 @@ class PluginContext {
   YouTubeService youtube_;
   MainWindow* window_ = nullptr;
   QTimer* previewClearTimer_ = nullptr;
+  QString lastPreviewPath_;
 };
 
 }  // namespace rpsu

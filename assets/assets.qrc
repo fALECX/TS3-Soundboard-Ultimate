@@ -1,0 +1,7 @@
+<RCC>
+  <qresource prefix="/assets">
+    <file>youtube-icon.svg</file>
+    <file>freesound-icon.svg</file>
+    <file>fALECX Logo.png</file>
+  </qresource>
+</RCC>
