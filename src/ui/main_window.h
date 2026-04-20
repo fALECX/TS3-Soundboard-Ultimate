@@ -61,6 +61,7 @@ class MainWindow : public QWidget {
   QLabel* statusLabel_ = nullptr;
   QFrame* previewBar_ = nullptr;
   QLabel* previewLabel_ = nullptr;
+  QLabel* liveIndicator_ = nullptr;
   QPushButton* stopPreviewButton_ = nullptr;
   QLineEdit* freesoundApiKey_ = nullptr;
   QPushButton* youtubeButton_ = nullptr;

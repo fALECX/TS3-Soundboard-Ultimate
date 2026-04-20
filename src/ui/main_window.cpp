@@ -394,9 +394,15 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   previewBar_->setStyleSheet(QStringLiteral("QFrame { background: #eef4fb; border: 1px solid #d3dfed; border-radius: 8px; }"));
   auto* previewLayout = new QHBoxLayout(previewBar_);
   previewLayout->setContentsMargins(12, 8, 12, 8);
+  liveIndicator_ = new QLabel(previewBar_);
+  liveIndicator_->setFixedSize(12, 12);
+  liveIndicator_->setStyleSheet(QStringLiteral("background-color: #ef4444; border-radius: 6px;"));
+  liveIndicator_->setVisible(false);
   previewLabel_ = new QLabel(QStringLiteral("Preview stopped"), previewBar_);
   stopPreviewButton_ = new QPushButton(QStringLiteral("Stop Preview"), previewBar_);
   stopPreviewButton_->setEnabled(false);
+  previewLayout->addWidget(liveIndicator_);
+  previewLayout->addSpacing(8);
   previewLayout->addWidget(previewLabel_, 1);
   previewLayout->addWidget(stopPreviewButton_);
   root->addWidget(previewBar_);
@@ -568,11 +574,13 @@ void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool pla
   if (!playing || title.trimmed().isEmpty()) {
     previewLabel_->setText(QStringLiteral("Preview stopped"));
     stopPreviewButton_->setEnabled(false);
+    liveIndicator_->setVisible(false);
     return;
   }
 
   previewLabel_->setText(QStringLiteral("Playing: %1  [%2]").arg(title, formatDurationMs(durationMs)));
   stopPreviewButton_->setEnabled(true);
+  liveIndicator_->setVisible(true);
 }
 
 void MainWindow::setSelectedCell(int cellIndex) {
