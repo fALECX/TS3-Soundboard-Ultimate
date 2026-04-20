@@ -228,8 +228,20 @@ class YouTubeSearchDialog : public QDialog {
       previewButton->setStyleSheet(QStringLiteral("QPushButton { padding: 5px 10px; }"));
       downloadRowButton->setStyleSheet(QStringLiteral("QPushButton { padding: 5px 10px; background: #dcecff; border-color: #b7cdee; }"));
 
-      connect(previewButton, &QPushButton::clicked, this, [result]() {
-        QDesktopServices::openUrl(QUrl(result.url));
+      connect(previewButton, &QPushButton::clicked, this, [this, result]() {
+        if (!owner_->onYouTubePreview) {
+          statusLabel_->setText(QStringLiteral("Preview is not available."));
+          return;
+        }
+        QString error;
+        const bool ok = runWithLoading(QStringLiteral("Preparing preview"), [this, &result, &error]() {
+          return owner_->onYouTubePreview(result, &error);
+        });
+        if (!ok) {
+          statusLabel_->setText(error.isEmpty() ? QStringLiteral("Preview failed.") : error);
+        } else {
+          statusLabel_->setText(QStringLiteral("Playing preview: %1").arg(result.title));
+        }
       });
       connect(downloadRowButton, &QPushButton::clicked, this, [this, index]() {
         resultsTable_->selectRow(index);
