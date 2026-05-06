@@ -1310,7 +1310,6 @@ void MainWindow::rebuild() {
     auto* item = new QListWidgetItem();
     item->setData(Qt::UserRole, sound.soundId);
     item->setData(Qt::UserRole + 1, sound.displayName);
-    item->setText(QStringLiteral("[%1] %2").arg(formatDurationMs(sound.durationMs), sound.displayName));
     item->setSizeHint(QSize(0, 54));
 
     auto* rowWidget = new QWidget(libraryList_);
