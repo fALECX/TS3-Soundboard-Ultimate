@@ -26,11 +26,14 @@ struct SoundRecord {
   QString createdAt;
   QString lastPlayedAt;
   int playCount = 0;
+  int durationMs = 0;
 };
 
 struct Cell {
   QString soundId;
   QString hotkey;
+  QString icon;
+  bool iconExplicit = false;
 };
 
 struct BoardRecord {

@@ -17,6 +17,7 @@ class StorageManager {
   bool saveState(const AppState& state) const;
   QString importSoundFile(const QString& sourcePath, AppState& state) const;
   bool deleteSound(const QString& soundId, AppState& state) const;
+  void refreshSoundMetadata(SoundRecord& sound) const;
 
  private:
   QString baseDir_;

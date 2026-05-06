@@ -93,6 +93,7 @@ target_compile_definitions(${PLUGIN_NAME}
 
 if(MSVC)
   target_link_options(${PLUGIN_NAME} PRIVATE /MANIFEST:NO)
+  target_compile_options(${PLUGIN_NAME} PRIVATE /utf-8)
 else()
   target_link_options(${PLUGIN_NAME} PRIVATE -static-libgcc -static-libstdc++)
 endif()
@@ -129,6 +130,7 @@ target_compile_definitions(${PLUGIN_RUNTIME_NAME}
 
 if(MSVC)
   target_link_options(${PLUGIN_RUNTIME_NAME} PRIVATE /MANIFEST:NO)
+  target_compile_options(${PLUGIN_RUNTIME_NAME} PRIVATE /utf-8)
 endif()
 
 set_target_properties(${PLUGIN_RUNTIME_NAME} PROPERTIES
@@ -200,6 +202,7 @@ target_compile_definitions(rpsu_ui_preview
 
 if(MSVC)
   target_link_options(rpsu_ui_preview PRIVATE /MANIFEST:NO)
+  target_compile_options(rpsu_ui_preview PRIVATE /utf-8)
 endif()
 
 set(RPSU_PACKAGE_VERSION "${PROJECT_VERSION}")

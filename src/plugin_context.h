@@ -60,6 +60,9 @@ class PluginContext {
         storage_.saveState(state_);
         refreshWindow();
       };
+      window_->onCreateBoard = [this](const QString& name, int rows, int cols) {
+        createBoard(name, rows, cols);
+      };
       window_->onPlaySound = [this](const QString& soundId) {
         playSound(soundId);
       };
@@ -125,8 +128,8 @@ class PluginContext {
       window_->onActiveBoardSizeChanged = [this](int rows, int cols) {
         resizeActiveBoard(rows, cols);
       };
-      window_->onSoundEmojiChanged = [this](const QString& soundId, const QString& emoji) {
-        changeSoundEmoji(soundId, emoji);
+      window_->onCellEmojiChanged = [this](int cellIndex, const QString& emoji) {
+        changeCellEmoji(cellIndex, emoji);
       };
       window_->onSoundRenamed = [this](const QString& soundId, const QString& displayName) {
         renameSoundDisplay(soundId, displayName);
@@ -331,6 +334,16 @@ class PluginContext {
   void reapplyPlaybackRouting() {}
   void stopPlaybackRouting() {}
 
+  void createBoard(const QString& name, int rows, int cols) {
+    const int safeRows = qBound(1, rows, 50);
+    const int safeCols = qBound(1, cols, 50);
+    BoardRecord board = createBoardRecord(name.trimmed().isEmpty() ? QStringLiteral("New Board") : name.trimmed(), safeCols, safeRows);
+    state_.activeBoardId = board.id;
+    state_.boards.push_back(board);
+    storage_.saveState(state_);
+    refreshWindow();
+  }
+
   void assignSoundToCell(const QString& soundId, int cellIndex) {
     if (cellIndex < 0) {
       return;
@@ -349,10 +362,15 @@ class PluginContext {
     }
   }
 
-  void changeSoundEmoji(const QString& soundId, const QString& emoji) {
-    for (SoundRecord& sound : state_.library) {
-      if (sound.soundId == soundId) {
-        sound.icon = emoji;
+  void changeCellEmoji(int cellIndex, const QString& emoji) {
+    if (cellIndex < 0) {
+      return;
+    }
+
+    for (BoardRecord& board : state_.boards) {
+      if (board.id == state_.activeBoardId && cellIndex < board.cells.size()) {
+        board.cells[cellIndex].icon = emoji;
+        board.cells[cellIndex].iconExplicit = true;
         storage_.saveState(state_);
         refreshWindow();
         return;
@@ -410,6 +428,7 @@ class PluginContext {
     sound.sourceType = QStringLiteral("youtube");
     sound.sourceUrl = result.url;
     sound.tags = QStringList{ QStringLiteral("youtube") };
+    storage_.refreshSoundMetadata(sound);
     state_.library.push_back(sound);
     storage_.saveState(state_);
     refreshWindow();

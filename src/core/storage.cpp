@@ -6,6 +6,12 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QStandardPaths>
+#include <QProcessEnvironment>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <mmsystem.h>
+#endif
 
 namespace rpsu {
 
@@ -30,6 +36,32 @@ bool writeJsonObject(const QString& path, const QJsonObject& object) {
   return true;
 }
 
+bool boardConfigHasAssignedCells(const QJsonObject& boardsObject) {
+  const QJsonArray boards = boardsObject.value(QStringLiteral("boards")).toArray();
+  for (const QJsonValue& boardValue : boards) {
+    if (!boardValue.isObject()) {
+      continue;
+    }
+
+    const QJsonArray cells = boardValue.toObject().value(QStringLiteral("cells")).toArray();
+    for (const QJsonValue& cellValue : cells) {
+      if (cellValue.isObject() && !cellValue.toObject().value(QStringLiteral("soundId")).toString().isEmpty()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool hasUsableStateFiles(const QString& libraryPath, const QString& boardsPath) {
+  const QJsonObject libraryObject = readJsonObject(libraryPath);
+  if (!libraryObject.isEmpty()) {
+    return true;
+  }
+
+  return boardConfigHasAssignedCells(readJsonObject(boardsPath));
+}
+
 QString copySound(const QString& sourcePath, const QString& targetDir, const QStringList& existingNames) {
   const QFileInfo info(sourcePath);
   const QString extension = info.suffix().isEmpty() ? QString() : QStringLiteral(".") + info.suffix();
@@ -38,6 +70,42 @@ QString copySound(const QString& sourcePath, const QString& targetDir, const QSt
   const QString targetPath = QDir(targetDir).filePath(safeName);
   QFile::copy(sourcePath, targetPath);
   return safeName;
+}
+
+int probeSoundDurationMs(const QString& path) {
+#ifdef _WIN32
+  const QString alias = QStringLiteral("rpsu_meta_%1").arg(reinterpret_cast<quintptr>(&path));
+  const QString normalizedPath = QDir::toNativeSeparators(path);
+  auto sendCommand = [](const QString& command, QString* response = nullptr) {
+    wchar_t buffer[256] = {0};
+    const MCIERROR error = mciSendStringW(
+      reinterpret_cast<LPCWSTR>(command.utf16()),
+      response ? buffer : nullptr,
+      response ? 256 : 0,
+      NULL
+    );
+    if (error != 0) {
+      return false;
+    }
+    if (response) {
+      *response = QString::fromWCharArray(buffer);
+    }
+    return true;
+  };
+
+  if (!sendCommand(QStringLiteral("open \"%1\" alias %2").arg(normalizedPath, alias))) {
+    return 0;
+  }
+
+  sendCommand(QStringLiteral("set %1 time format milliseconds").arg(alias));
+  QString durationValue;
+  const bool ok = sendCommand(QStringLiteral("status %1 length").arg(alias), &durationValue);
+  sendCommand(QStringLiteral("close %1").arg(alias));
+  return ok ? durationValue.toInt() : 0;
+#else
+  Q_UNUSED(path);
+  return 0;
+#endif
 }
 
 }  // namespace
@@ -62,16 +130,39 @@ void StorageManager::ensureDirectories() const {
 }
 
 QStringList StorageManager::legacyCandidateDirs() const {
-  const QString roaming = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-  return {
-    QDir(roaming).filePath(QStringLiteral("rp-soundboard-ultimate")),
-    QDir(roaming).filePath(QStringLiteral("RP Soundboard Ultimate")),
-    QDir(roaming).filePath(QStringLiteral("RP-Soundboard-Ultimate"))
+  QStringList roots;
+  const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+  if (env.contains(QStringLiteral("APPDATA"))) {
+    roots.push_back(env.value(QStringLiteral("APPDATA")));
+  }
+
+  const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+  if (!appData.isEmpty()) {
+    QDir dir(appData);
+    for (int i = 0; i < 3 && dir.cdUp(); ++i) {
+      roots.push_back(dir.absolutePath());
+    }
+  }
+
+  QStringList candidates;
+  const QStringList names = {
+    QStringLiteral("rp-soundboard-ultimate"),
+    QStringLiteral("RP Soundboard Ultimate"),
+    QStringLiteral("RP-Soundboard-Ultimate")
   };
+  for (const QString& root : roots) {
+    for (const QString& name : names) {
+      const QString candidate = QDir(root).filePath(name);
+      if (QDir(candidate).canonicalPath() != QDir(baseDir_).canonicalPath() && !candidates.contains(candidate)) {
+        candidates.push_back(candidate);
+      }
+    }
+  }
+  return candidates;
 }
 
 void StorageManager::migrateLegacyElectronDataIfNeeded() const {
-  if (QFileInfo::exists(libraryPath_) || QFileInfo::exists(boardsPath_)) {
+  if (hasUsableStateFiles(libraryPath_, boardsPath_)) {
     return;
   }
 
@@ -84,12 +175,15 @@ void StorageManager::migrateLegacyElectronDataIfNeeded() const {
     }
 
     if (QFileInfo::exists(legacyLibrary)) {
+      QFile::remove(libraryPath_);
       QFile::copy(legacyLibrary, libraryPath_);
     }
     if (QFileInfo::exists(legacyBoards)) {
+      QFile::remove(boardsPath_);
       QFile::copy(legacyBoards, boardsPath_);
     }
     if (QFileInfo::exists(legacyAppConfig)) {
+      QFile::remove(configPath_);
       QFile::copy(legacyAppConfig, configPath_);
     }
 
@@ -117,10 +211,20 @@ AppState StorageManager::loadState() {
       state.library.push_back(createSoundRecord(filename));
     }
   }
+  bool metadataChanged = false;
+  for (SoundRecord& sound : state.library) {
+    if (sound.durationMs <= 0) {
+      refreshSoundMetadata(sound);
+      metadataChanged = metadataChanged || sound.durationMs > 0;
+    }
+  }
   if (state.boards.isEmpty()) {
     BoardRecord board = createBoardRecord();
     state.activeBoardId = board.id;
     state.boards.push_back(board);
+  }
+  if (metadataChanged) {
+    saveState(state);
   }
   return state;
 }
@@ -153,6 +257,7 @@ QString StorageManager::importSoundFile(const QString& sourcePath, AppState& sta
 
   const QString filename = copySound(sourcePath, soundsDir(), existingNames);
   SoundRecord sound = createSoundRecord(filename);
+  refreshSoundMetadata(sound);
   state.library.push_back(sound);
   return sound.soundId;
 }
@@ -175,7 +280,7 @@ bool StorageManager::deleteSound(const QString& soundId, AppState& state) const 
   for (BoardRecord& board : state.boards) {
     for (Cell& cell : board.cells) {
       if (cell.soundId == soundId) {
-        cell = {};
+        cell.soundId.clear();
       }
     }
     board.unassignedSoundIds.removeAll(soundId);
@@ -183,6 +288,15 @@ bool StorageManager::deleteSound(const QString& soundId, AppState& state) const 
 
   QFile::remove(QDir(soundsDir()).filePath(filename));
   return true;
+}
+
+void StorageManager::refreshSoundMetadata(SoundRecord& sound) const {
+  if (sound.filename.isEmpty()) {
+    sound.durationMs = 0;
+    return;
+  }
+
+  sound.durationMs = probeSoundDurationMs(QDir(soundsDir()).filePath(sound.filename));
 }
 
 }  // namespace rpsu

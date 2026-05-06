@@ -8,6 +8,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QDesktopServices>
 #include <QEventLoop>
 #include <QFrame>
@@ -15,6 +16,7 @@
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -23,7 +25,9 @@
 #include <QMenu>
 #include <QPixmap>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSignalBlocker>
+#include <QSizePolicy>
 #include <QSlider>
 #include <QSpinBox>
 #include <QSize>
@@ -158,6 +162,25 @@ QString formatDuration(int seconds) {
 
 QString formatDurationMs(int durationMs) {
   return formatDuration(qMax(0, durationMs / 1000));
+}
+
+QString libraryMetaLabel(const SoundRecord& sound) {
+  const QString source = sound.sourceType.trimmed().isEmpty() ? QStringLiteral("local") : sound.sourceType;
+  return source.toUpper();
+}
+
+QString emojiFromUtf8(const char* value) {
+  return QString::fromUtf8(value);
+}
+
+QString compactCellLabel(const QString& value, int rows, int cols) {
+  const int density = qMax(rows, cols);
+  const int limit = density >= 10 ? 18 : (density >= 7 ? 28 : 44);
+  QString label = value.simplified();
+  if (label.size() <= limit) {
+    return label;
+  }
+  return label.left(qMax(1, limit - 3)).trimmed() + QStringLiteral("...");
 }
 
 class YouTubeSearchDialog : public QDialog {
@@ -468,10 +491,13 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   }
   topBar->addWidget(brandButton);
 
-  topBar->addWidget(new QLabel(QStringLiteral("Board"), topBarFrame));
   boardSelector_ = new QComboBox(topBarFrame);
   boardSelector_->setObjectName(QStringLiteral("boardSelector"));
-  topBar->addWidget(boardSelector_, 1);
+  addBoardButton_ = new QToolButton(topBarFrame);
+  addBoardButton_->setObjectName(QStringLiteral("addBoardButton"));
+  addBoardButton_->setText(QStringLiteral("+"));
+  addBoardButton_->setToolTip(QStringLiteral("Create board"));
+  addBoardButton_->setFixedSize(34, 34);
 
   importButton_ = new QPushButton(QStringLiteral("Import Sound"), topBarFrame);
   importButton_->setObjectName(QStringLiteral("importButton"));
@@ -534,7 +560,7 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   auto* contentWidget = new QWidget(this);
   auto* contentLayout = new QVBoxLayout(contentWidget);
   contentLayout->setContentsMargins(12, 10, 12, 12);
-  contentLayout->setSpacing(10);
+  contentLayout->setSpacing(8);
 
   // Settings panel
   settingsFrame_ = new QFrame(contentWidget);
@@ -619,14 +645,49 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
 
   // Sound grid + library
   auto* body    = new QHBoxLayout();
-  gridHost_     = new QWidget(contentWidget);
+  body->setSpacing(10);
+  auto* leftPane = new QWidget(contentWidget);
+  auto* leftPaneLayout = new QVBoxLayout(leftPane);
+  leftPaneLayout->setContentsMargins(0, 0, 0, 0);
+  leftPaneLayout->setSpacing(8);
+
+  boardNavFrame_ = new QWidget(leftPane);
+  boardNavFrame_->setObjectName(QStringLiteral("boardNavFrame"));
+  boardNavLayout_ = new QHBoxLayout(boardNavFrame_);
+  boardNavLayout_->setContentsMargins(10, 8, 10, 8);
+  boardNavLayout_->setSpacing(8);
+  leftPaneLayout->addWidget(boardNavFrame_);
+
+  gridScrollArea_ = new QScrollArea(leftPane);
+  gridScrollArea_->setObjectName(QStringLiteral("gridScrollArea"));
+  gridScrollArea_->setWidgetResizable(true);
+  gridScrollArea_->setFrameShape(QFrame::NoFrame);
+  gridScrollArea_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  gridScrollArea_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+  gridHost_     = new QWidget(gridScrollArea_);
   gridHost_->setObjectName(QStringLiteral("gridHost"));
+  gridHost_->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
   gridLayout_   = new QGridLayout(gridHost_);
-  gridLayout_->setSpacing(6);
+  gridLayout_->setContentsMargins(0, 0, 0, 0);
+  gridLayout_->setHorizontalSpacing(8);
+  gridLayout_->setVerticalSpacing(8);
+  gridScrollArea_->setWidget(gridHost_);
+  leftPaneLayout->addWidget(gridScrollArea_, 1);
+
+  pagerFrame_ = new QWidget(leftPane);
+  pagerFrame_->setObjectName(QStringLiteral("pagerFrame"));
+  pagerLayout_ = new QHBoxLayout(pagerFrame_);
+  pagerLayout_->setContentsMargins(10, 8, 10, 8);
+  pagerLayout_->setSpacing(6);
+  leftPaneLayout->addWidget(pagerFrame_);
+
   libraryList_  = new QListWidget(contentWidget);
   libraryList_->setObjectName(QStringLiteral("libraryList"));
-  libraryList_->setMinimumWidth(280);
-  body->addWidget(gridHost_, 2);
+  libraryList_->setMinimumWidth(320);
+  libraryList_->setSpacing(4);
+  libraryList_->setContextMenuPolicy(Qt::CustomContextMenu);
+  body->addWidget(leftPane, 2);
   body->addWidget(libraryList_, 1);
   contentLayout->addLayout(body, 1);
 
@@ -646,8 +707,16 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
     QDesktopServices::openUrl(QUrl(QStringLiteral("https://twitch.tv/fALECX")));
   });
 
-  connect(boardSelector_, &QComboBox::currentTextChanged, this, [this]() {
+  connect(boardSelector_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int index) {
+    if (index < 0) {
+      return;
+    }
+    setSelectedCell(-1);
     if (onBoardSelected) onBoardSelected(boardSelector_->currentData().toString());
+  });
+
+  connect(addBoardButton_, &QToolButton::clicked, this, [this]() {
+    openCreateBoardDialog();
   });
 
   connect(importButton_, &QPushButton::clicked, this, [this]() {
@@ -660,20 +729,38 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
     if (!item) return;
     if (selectedCellIndex_ >= 0)
       statusLabel_->setText(
-        QStringLiteral("Ready to assign \"%1\" to the selected cell. Double-click to confirm.").arg(item->text())
+        QStringLiteral("Ready to assign \"%1\" to the selected cell. Double-click to confirm.").arg(displayNameForItem(item))
       );
   });
 
   connect(libraryList_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item) {
     if (!item) return;
     const QString sid  = item->data(Qt::UserRole).toString();
-    const QString text = item->text();
+    const QString text = displayNameForItem(item);
     if (selectedCellIndex_ >= 0 && onAssignSoundToCell) {
       onAssignSoundToCell(sid, selectedCellIndex_);
       statusLabel_->setText(QStringLiteral("Assigned \"%1\" to the selected cell.").arg(text));
       return;
     }
     if (onPlaySound) onPlaySound(sid);
+  });
+
+  connect(libraryList_, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+    auto* item = libraryList_->itemAt(pos);
+    if (!item) {
+      return;
+    }
+
+    const QString soundId = item->data(Qt::UserRole).toString();
+    if (soundId.isEmpty()) {
+      return;
+    }
+
+    QMenu contextMenu;
+    contextMenu.addAction(QStringLiteral("Rename..."), this, [this, soundId]() {
+      showRenameDialog(soundId);
+    });
+    contextMenu.exec(libraryList_->viewport()->mapToGlobal(pos));
   });
 
   connect(freesoundApiKey_, &QLineEdit::editingFinished, this, [this]() {
@@ -746,6 +833,10 @@ void MainWindow::applyTheme() {
     "QLineEdit { padding: 7px 10px; border: 1px solid %8; border-radius: 8px; background: %15; color: %2; }"
 
     "#settingsFrame { background: %3; border: 1px solid %4; border-radius: 10px; }"
+    "#boardNavFrame, #pagerFrame { background: %3; border: 1px solid %4; border-radius: 10px; }"
+    "#pageLabel { color: %7; font-size: 12px; font-weight: 600; }"
+    "#pageButton { min-width: 32px; padding: 5px 10px; font-weight: 600; }"
+
     "QCheckBox { color: %2; spacing: 6px; }"
     "QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid %8; border-radius: 3px; background: %15; }"
     "QCheckBox::indicator:checked { background: %16; border-color: %16; }"
@@ -759,12 +850,17 @@ void MainWindow::applyTheme() {
     "#previewBar { background: %17; border: 1px solid %18; border-radius: 10px; }"
     "#previewLabel { color: %7; font-size: 12px; }"
 
-    "#gridHost QPushButton { min-height: 72px; border: 1px solid %19; border-radius: 8px; background: %20; color: %2; font-size: 12px; }"
-    "#gridHost QPushButton:hover   { background: %21; border-color: %16; }"
-    "#gridHost QPushButton:pressed { background: %13; }"
+    "#gridScrollArea { background: transparent; border: none; }"
+    "#gridHost { background: transparent; }"
+    "#cellEmojiButton { border: none; background: transparent; color: %2; padding: 0px; }"
+    "#cellEmojiButton:hover { background: %10; border-radius: 6px; }"
+    "#cellButton { border: none; background: transparent; color: %2; font-size: 12px; text-align: center; padding: 4px 6px 6px 6px; }"
+    "#cellButton:hover { color: %2; }"
+    "#cellDeleteButton { min-width: 18px; max-width: 18px; min-height: 18px; max-height: 18px; padding: 0px; border-radius: 9px; background: transparent; }"
+    "#cellDeleteButton:hover { background: %10; }"
 
     "#libraryList { background: %3; border: 1px solid %4; border-radius: 10px; color: %2; }"
-    "#libraryList::item { padding: 6px 10px; border-radius: 6px; }"
+    "#libraryList::item { padding: 2px; border-radius: 8px; }"
     "#libraryList::item:selected { background: %13; }"
     "#libraryList::item:hover    { background: %10; }"
   )
@@ -791,7 +887,11 @@ void MainWindow::applyTheme() {
        t.cellHover)          // 21
   );
 
-  setSelectedCell(selectedCellIndex_);
+  if (!rebuildingUi_) {
+    rebuild();
+  } else {
+    setSelectedCell(selectedCellIndex_);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -799,7 +899,11 @@ void MainWindow::applyTheme() {
 // ---------------------------------------------------------------------------
 
 void MainWindow::setState(const AppState& state) {
+  const QString previousActiveBoardId = state_.activeBoardId;
   state_ = state;
+  if (previousActiveBoardId != state_.activeBoardId) {
+    selectedCellIndex_ = -1;
+  }
   rebuild();
 }
 
@@ -833,14 +937,22 @@ void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool pla
 void MainWindow::setSelectedCell(int cellIndex) {
   selectedCellIndex_ = cellIndex;
   const Theme t = darkMode_ ? darkTheme() : lightTheme();
-  for (int i = 0; i < cellButtons_.size(); ++i) {
-    if (!cellButtons_[i]) continue;
-    cellButtons_[i]->setStyleSheet(
-      (i == selectedCellIndex_)
-        ? QStringLiteral("border: 2px solid %1 !important;").arg(t.cellSelected)
-        : QString()
-    );
+  for (int i = 0; i < cellCards_.size(); ++i) {
+    if (!cellCards_[i]) continue;
+    cellCards_[i]->setStyleSheet(QStringLiteral(
+      "background: %1; border: 1px solid %2; border-radius: 10px;"
+    ).arg(i == selectedCellIndex_ ? t.accentBg : t.cellBg,
+          i == selectedCellIndex_ ? t.cellSelected : t.cellBorder));
   }
+}
+
+QString MainWindow::displayNameForItem(const QListWidgetItem* item) const {
+  if (!item) {
+    return QString();
+  }
+
+  const QString displayName = item->data(Qt::UserRole + 1).toString();
+  return displayName.isEmpty() ? item->text() : displayName;
 }
 
 void MainWindow::openYouTubeDialog() {
@@ -870,25 +982,6 @@ void MainWindow::showRenameDialog(const QString& soundId) {
     nameEdit->setText(sound.displayName);
     layout->addWidget(nameEdit);
 
-    auto* emojiLayout = new QHBoxLayout();
-    auto* emojiLabel = new QLabel(QStringLiteral("Icon:"), &dialog);
-    auto* emojiButton = new QPushButton(sound.icon, &dialog);
-    emojiButton->setMaximumWidth(60);
-    emojiButton->setStyleSheet(QStringLiteral("QPushButton { font-size: 24px; }"));
-    emojiLayout->addWidget(emojiLabel);
-    emojiLayout->addWidget(emojiButton);
-    emojiLayout->addStretch(1);
-    layout->addLayout(emojiLayout);
-
-    QString selectedEmoji = sound.icon;
-    connect(emojiButton, &QPushButton::clicked, &dialog, [this, &dialog, &selectedEmoji, emojiButton, sound]() {
-      EmojiPicker picker(sound.icon, &dialog);
-      if (picker.exec() == QDialog::Accepted) {
-        selectedEmoji = picker.selectedEmoji();
-        emojiButton->setText(selectedEmoji);
-      }
-    });
-
     auto* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -899,9 +992,6 @@ void MainWindow::showRenameDialog(const QString& soundId) {
       if (!newName.isEmpty()) {
         if (onSoundRenamed) {
           onSoundRenamed(soundId, newName);
-        }
-        if (selectedEmoji != sound.icon && onSoundEmojiChanged) {
-          onSoundEmojiChanged(soundId, selectedEmoji);
         }
       }
     }
@@ -915,7 +1005,7 @@ void MainWindow::handleCellClick(int cellIndex, const QString& soundId) {
   auto* currentItem = libraryList_->currentItem();
   if (currentItem && onAssignSoundToCell) {
     const QString newSoundId = currentItem->data(Qt::UserRole).toString();
-    const QString itemText = currentItem->text();
+    const QString itemText = displayNameForItem(currentItem);
     onAssignSoundToCell(newSoundId, cellIndex);
     statusLabel_->setText(QStringLiteral("Assigned \"%1\" to the selected cell.").arg(itemText));
     return;
@@ -929,7 +1019,7 @@ void MainWindow::handleCellClick(int cellIndex, const QString& soundId) {
   if (currentItem && onAssignSoundToCell) {
     onAssignSoundToCell(currentItem->data(Qt::UserRole).toString(), cellIndex);
     statusLabel_->setText(
-      QStringLiteral("Assigned \"%1\" to the selected cell.").arg(currentItem->text())
+      QStringLiteral("Assigned \"%1\" to the selected cell.").arg(displayNameForItem(currentItem))
     );
     return;
   }
@@ -947,6 +1037,34 @@ void MainWindow::handleCellClick(int cellIndex, const QString& soundId) {
   } else if (actionDialog.clickedButton() == youtubeBtn) {
     openYouTubeDialog();
   }
+}
+
+void MainWindow::openCreateBoardDialog() {
+  if (!onCreateBoard) {
+    return;
+  }
+
+  bool accepted = false;
+  const QString defaultName = QStringLiteral("Board %1").arg(state_.boards.size() + 1);
+  const QString name = QInputDialog::getText(
+    this,
+    QStringLiteral("Create Board"),
+    QStringLiteral("Board name:"),
+    QLineEdit::Normal,
+    defaultName,
+    &accepted
+  ).trimmed();
+
+  if (!accepted) {
+    return;
+  }
+
+  const QString boardName = name.isEmpty() ? defaultName : name;
+  const BoardRecord* board = activeBoard();
+  const int rows = board ? qMax(1, board->rows) : 3;
+  const int cols = board ? qMax(1, board->cols) : 4;
+  selectedCellIndex_ = -1;
+  onCreateBoard(boardName, rows, cols);
 }
 
 void MainWindow::rebuild() {
@@ -967,6 +1085,60 @@ void MainWindow::rebuild() {
   if (boardSelector_->currentIndex() < 0 && boardSelector_->count() > 0)
     boardSelector_->setCurrentIndex(0);
 
+  while (QLayoutItem* item = boardNavLayout_->takeAt(0)) {
+    QWidget* widget = item->widget();
+    if (widget && widget != boardSelector_ && widget != addBoardButton_) {
+      item->widget()->deleteLater();
+    }
+    delete item;
+  }
+  while (QLayoutItem* item = pagerLayout_->takeAt(0)) {
+    if (item->widget()) {
+      item->widget()->deleteLater();
+    }
+    delete item;
+  }
+  pageButtons_.clear();
+  const Theme t = darkMode_ ? darkTheme() : lightTheme();
+
+  auto* pageLabel = new QLabel(QStringLiteral("Page"), boardNavFrame_);
+  pageLabel->setObjectName(QStringLiteral("pageLabel"));
+  boardNavLayout_->addWidget(pageLabel);
+  boardNavLayout_->addWidget(boardSelector_, 1);
+  boardNavLayout_->addWidget(addBoardButton_);
+  boardNavLayout_->addStretch(1);
+
+  auto* pagerLabel = new QLabel(QStringLiteral("Pages"), pagerFrame_);
+  pagerLabel->setObjectName(QStringLiteral("pageLabel"));
+  pagerLayout_->addWidget(pagerLabel);
+
+  auto addPageJump = [this, &t](QHBoxLayout* layout, const QString& text, int targetIndex, bool enabled, bool active = false) {
+    auto* button = new QPushButton(text);
+    button->setObjectName(QStringLiteral("pageButton"));
+    button->setEnabled(enabled);
+    if (active) {
+      button->setStyleSheet(QStringLiteral("background: %1; border-color: %2; font-weight: 700;")
+        .arg(t.accentBg, t.cellSelected));
+    }
+    if (enabled) {
+      connect(button, &QPushButton::clicked, this, [this, targetIndex]() {
+        if (targetIndex >= 0 && targetIndex < boardSelector_->count()) {
+          boardSelector_->setCurrentIndex(targetIndex);
+        }
+      });
+    }
+    layout->addWidget(button);
+    pageButtons_.push_back(button);
+  };
+
+  const int currentBoardIndex = boardSelector_->currentIndex();
+  addPageJump(pagerLayout_, QStringLiteral("<"), currentBoardIndex - 1, currentBoardIndex > 0);
+  for (int i = 0; i < boardSelector_->count(); ++i) {
+    addPageJump(pagerLayout_, QString::number(i + 1), i, true, i == currentBoardIndex);
+  }
+  addPageJump(pagerLayout_, QStringLiteral(">"), currentBoardIndex + 1, currentBoardIndex >= 0 && currentBoardIndex < boardSelector_->count() - 1);
+  pagerLayout_->addStretch(1);
+
   freesoundApiKey_->setText(state_.config.freesoundApiKey);
   volumeRemoteSlider_->setValue(state_.config.volumeRemote);
   volumeLocalSlider_->setValue(state_.config.volumeLocal);
@@ -980,74 +1152,143 @@ void MainWindow::rebuild() {
   colsSpin_->setValue(board ? qMax(1, board->cols) : 1);
   rebuildingUi_ = false;
 
-  cellButtons_.clear();
-  deleteButtons_.clear();
+  cellCards_.clear();
   while (QLayoutItem* item = gridLayout_->takeAt(0)) {
     delete item->widget();
     delete item;
   }
+  for (int i = 0; i < 50; ++i) {
+    gridLayout_->setColumnStretch(i, 0);
+    gridLayout_->setColumnMinimumWidth(i, 0);
+    gridLayout_->setRowStretch(i, 0);
+    gridLayout_->setRowMinimumHeight(i, 0);
+  }
+  gridHost_->setMinimumSize(0, 0);
 
   if (board) {
     const int safeCols = qMax(1, board->cols);
+    const int safeRows = qMax(1, board->rows);
+    const int density = qMax(safeRows, safeCols);
+    const int gridSpacing = density >= 10 ? 4 : (density >= 7 ? 6 : 8);
+    const int cellMargin = density >= 10 ? 4 : (density >= 7 ? 6 : 8);
+    const int emojiSize = density >= 10 ? 22 : (density >= 7 ? 26 : 32);
+    const int minCellWidth = density >= 10 ? 72 : (density >= 7 ? 88 : 116);
+    const int minCellHeight = density >= 10 ? 58 : (density >= 7 ? 70 : 88);
+    gridLayout_->setHorizontalSpacing(gridSpacing);
+    gridLayout_->setVerticalSpacing(gridSpacing);
+    for (int col = 0; col < safeCols; ++col) {
+      gridLayout_->setColumnStretch(col, 1);
+      gridLayout_->setColumnMinimumWidth(col, minCellWidth);
+    }
+    for (int row = 0; row < safeRows; ++row) {
+      gridLayout_->setRowStretch(row, 1);
+      gridLayout_->setRowMinimumHeight(row, minCellHeight);
+    }
+    gridHost_->setMinimumSize(
+      (minCellWidth * safeCols) + (gridSpacing * qMax(0, safeCols - 1)),
+      (minCellHeight * safeRows) + (gridSpacing * qMax(0, safeRows - 1))
+    );
+
     for (int index = 0; index < board->cells.size(); ++index) {
-      const int row = (index / safeCols) * 2;
+      const int row = index / safeCols;
       const int col = index % safeCols;
-      QString label   = QStringLiteral("+");
+      QString label = QStringLiteral("Empty cell");
       QString soundId;
-      QString emoji = QStringLiteral("🔊");
+      QString emoji = board->cells[index].icon;
       if (!board->cells[index].soundId.isEmpty()) {
         soundId = board->cells[index].soundId;
         for (const SoundRecord& sound : state_.library) {
           if (sound.soundId == soundId) {
             label = sound.displayName;
-            emoji = sound.icon;
             break;
           }
-          if (sound.soundId == soundId) { label = sound.displayName; break; }
         }
       }
+      if (emoji.isEmpty()) {
+        emoji = soundId.isEmpty() ? QStringLiteral("+") : emojiFromUtf8("\xF0\x9F\x94\x8A");
+      }
 
-      auto* cellWidget = new QWidget(this);
+      auto* cellWidget = new QWidget(gridHost_);
+      cellWidget->setMinimumSize(minCellWidth, minCellHeight);
+      cellWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+      cellWidget->setStyleSheet(QStringLiteral(
+        "background: %1; border: 1px solid %2; border-radius: 10px;"
+      ).arg(t.cellBg, t.cellBorder));
+
       auto* cellLayout = new QVBoxLayout(cellWidget);
-      cellLayout->setContentsMargins(0, 0, 0, 0);
-      cellLayout->setSpacing(4);
+      cellLayout->setContentsMargins(cellMargin, cellMargin, cellMargin, cellMargin);
+      cellLayout->setSpacing(density >= 7 ? 1 : 2);
 
-      auto* emojiButton = new QPushButton(emoji, this);
-      emojiButton->setStyleSheet(
-        QStringLiteral("QPushButton { font-size: 36px; border: none; background: transparent; padding: 8px; } "
-                       "QPushButton:hover { background: rgba(0, 0, 0, 0.05); border-radius: 4px; }"));
-      emojiButton->setMinimumHeight(60);
-      cellLayout->addWidget(emojiButton, 0, Qt::AlignCenter);
-      auto* button = new QPushButton(buildCellButtonLabel(board->cells[index], label), this);
-      button->setMinimumHeight(40);
+      auto* headerLayout = new QHBoxLayout();
+      headerLayout->setContentsMargins(0, 0, 0, 0);
+
+      auto* emojiButton = new QPushButton(emoji, cellWidget);
+      emojiButton->setObjectName(QStringLiteral("cellEmojiButton"));
+      emojiButton->setCursor(Qt::PointingHandCursor);
+      emojiButton->setToolTip(QStringLiteral("Change tile emoji"));
+      emojiButton->setFixedSize(emojiSize + 8, emojiSize + 8);
+      emojiButton->setStyleSheet(QStringLiteral(
+        "#cellEmojiButton { font-size: %1px; }"
+      ).arg(emojiSize));
+      headerLayout->addStretch(1);
+      headerLayout->addWidget(emojiButton, 0, Qt::AlignCenter);
+      headerLayout->addStretch(1);
+
+      auto* deleteButton = new QPushButton(QStringLiteral("x"), cellWidget);
+      deleteButton->setObjectName(QStringLiteral("cellDeleteButton"));
+      deleteButton->setToolTip(QStringLiteral("Clear tile"));
+      deleteButton->setVisible(!soundId.isEmpty());
+      headerLayout->addWidget(deleteButton, 0, Qt::AlignRight);
+      cellLayout->addLayout(headerLayout);
+
+      const QString buttonText = compactCellLabel(buildCellButtonLabel(board->cells[index], label), safeRows, safeCols);
+      auto* button = new QPushButton(buttonText, cellWidget);
+      button->setObjectName(QStringLiteral("cellButton"));
+      button->setFlat(true);
+      button->setCursor(Qt::PointingHandCursor);
+      button->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+      button->setMinimumHeight(qMax(24, minCellHeight - emojiSize - (cellMargin * 2) - 10));
+      button->setToolTip(label);
       button->setContextMenuPolicy(Qt::CustomContextMenu);
-      cellLayout->addWidget(button);
+      button->setStyleSheet(QStringLiteral(
+        "#cellButton { background: transparent; border: none; color: %1; font-size: %2px; font-weight: 600; text-align: center; }"
+      ).arg(t.textPrimary, QString::number(density >= 10 ? 10 : 12)));
+      cellLayout->addWidget(button, 1);
 
       gridLayout_->addWidget(cellWidget, row, col);
-      cellButtons_.push_back(button);
+      cellCards_.push_back(cellWidget);
 
       const QString currentSoundId = soundId;
-      connect(emojiButton, &QPushButton::clicked, this, [this, currentSoundId]() {
-        if (currentSoundId.isEmpty()) {
-          statusLabel_->setText(QStringLiteral("Assign a sound to the cell first."));
-          return;
-        }
-        EmojiPicker picker(QString(), this);
-        if (picker.exec() == QDialog::Accepted) {
-          if (onSoundEmojiChanged) {
-            onSoundEmojiChanged(currentSoundId, picker.selectedEmoji());
-          }
+      connect(emojiButton, &QPushButton::clicked, this, [this, index, emoji]() {
+        EmojiPicker picker(emoji, this);
+        if (picker.exec() == QDialog::Accepted && onCellEmojiChanged) {
+          onCellEmojiChanged(index, picker.selectedEmoji());
         }
       });
 
-      connect(button, &QWidget::customContextMenuRequested, this, [this, currentSoundId](const QPoint&) {
-        if (currentSoundId.isEmpty()) {
-          return;
-        }
+      connect(button, &QWidget::customContextMenuRequested, this, [this, currentSoundId, index](const QPoint&) {
         QMenu contextMenu;
-        contextMenu.addAction(QStringLiteral("Rename..."), this, [this, currentSoundId]() {
-          showRenameDialog(currentSoundId);
+        contextMenu.addAction(QStringLiteral("Change Tile Emoji..."), this, [this, index]() {
+          const BoardRecord* active = activeBoard();
+          const QString currentIcon = active && index >= 0 && index < active->cells.size()
+            ? active->cells[index].icon
+            : QString();
+          EmojiPicker picker(currentIcon, this);
+          if (picker.exec() == QDialog::Accepted && onCellEmojiChanged) {
+            onCellEmojiChanged(index, picker.selectedEmoji());
+          }
         });
+        if (!currentSoundId.isEmpty()) {
+          contextMenu.addAction(QStringLiteral("Rename Sound..."), this, [this, currentSoundId]() {
+            showRenameDialog(currentSoundId);
+          });
+          contextMenu.addAction(QStringLiteral("Clear Tile"), this, [this, index]() {
+            if (onAssignSoundToCell) {
+              onAssignSoundToCell(QString(), index);
+              statusLabel_->setText(QStringLiteral("Cell cleared."));
+            }
+          });
+        }
         contextMenu.exec(QCursor::pos());
       });
 
@@ -1055,12 +1296,6 @@ void MainWindow::rebuild() {
         handleCellClick(index, soundId);
       });
 
-      auto* deleteButton = new QPushButton(QStringLiteral("✕"), this);
-      deleteButton->setMaximumWidth(30);
-      deleteButton->setMaximumHeight(24);
-      deleteButton->setStyleSheet(QStringLiteral("QPushButton { color: #999; border: 1px solid #ddd; border-radius: 4px; padding: 0px; }"));
-      gridLayout_->addWidget(deleteButton, row + 1, col, Qt::AlignHCenter);
-      deleteButtons_.push_back(deleteButton);
       connect(deleteButton, &QPushButton::clicked, this, [this, index]() {
         if (onAssignSoundToCell) {
           onAssignSoundToCell(QString(), index);
@@ -1072,13 +1307,44 @@ void MainWindow::rebuild() {
 
   libraryList_->clear();
   for (const SoundRecord& sound : state_.library) {
-    auto* item = new QListWidgetItem(
-      QStringLiteral("%1 [%2]").arg(sound.displayName, sound.sourceType), libraryList_
-    );
+    auto* item = new QListWidgetItem();
     item->setData(Qt::UserRole, sound.soundId);
+    item->setData(Qt::UserRole + 1, sound.displayName);
+    item->setText(QStringLiteral("[%1] %2").arg(formatDurationMs(sound.durationMs), sound.displayName));
+    item->setSizeHint(QSize(0, 54));
+
+    auto* rowWidget = new QWidget(libraryList_);
+    rowWidget->setStyleSheet(QStringLiteral("background: transparent;"));
+    auto* rowLayout = new QHBoxLayout(rowWidget);
+    rowLayout->setContentsMargins(10, 6, 10, 6);
+    rowLayout->setSpacing(8);
+
+    auto* textLayout = new QVBoxLayout();
+    textLayout->setContentsMargins(0, 0, 0, 0);
+    textLayout->setSpacing(2);
+
+    auto* titleLabel = new QLabel(sound.displayName, rowWidget);
+    titleLabel->setStyleSheet(QStringLiteral("font-weight: 600; color: %1;").arg(t.textPrimary));
+    titleLabel->setToolTip(sound.displayName);
+
+    auto* metaLabel = new QLabel(libraryMetaLabel(sound), rowWidget);
+    metaLabel->setStyleSheet(QStringLiteral("font-size: 11px; color: %1;").arg(t.textMuted));
+
+    auto* durationLabel = new QLabel(formatDurationMs(sound.durationMs), rowWidget);
+    durationLabel->setMinimumWidth(46);
+    durationLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    durationLabel->setStyleSheet(QStringLiteral("font-weight: 700; color: %1;").arg(t.textMuted));
+
+    textLayout->addWidget(titleLabel);
+    textLayout->addWidget(metaLabel);
+    rowLayout->addWidget(durationLabel, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    rowLayout->addLayout(textLayout, 1);
+
+    libraryList_->addItem(item);
+    libraryList_->setItemWidget(item, rowWidget);
   }
 
-  if (selectedCellIndex_ >= cellButtons_.size()) selectedCellIndex_ = -1;
+  if (selectedCellIndex_ >= cellCards_.size()) selectedCellIndex_ = -1;
   setSelectedCell(selectedCellIndex_);
 }
 

@@ -18,8 +18,8 @@ struct TS3Functions ts3Functions;
 
 static const char* kFallbackName = "RP Soundboard Ultimate";
 static const char* kFallbackVersion = "0.2.0";
-static const char* kFallbackAuthor = "OpenAI Codex";
-static const char* kFallbackDescription = "RP Soundboard Ultimate TeamSpeak plugin with external dashboard fallback.";
+static const char* kFallbackAuthor = "fALECX";
+static const char* kFallbackDescription = "Native TeamSpeak 3 soundboard plugin for RP Soundboard Ultimate.";
 static const char* kFallbackCommandKeyword = "rpsu";
 static const char* kFallbackMenuText = "Open RP Soundboard Ultimate";
 static const char* kDashboardLaunchErrorMessage =

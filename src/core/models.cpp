@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QRegularExpression>
 #include <QtMath>
@@ -20,6 +21,10 @@ Cell cellFromJson(const QJsonValue& value) {
   Cell cell;
   cell.soundId = object.value(QStringLiteral("soundId")).toString();
   cell.hotkey = object.value(QStringLiteral("hotkey")).toString();
+  cell.iconExplicit = object.contains(QStringLiteral("icon")) || object.contains(QStringLiteral("emoji"));
+  cell.icon = object.value(QStringLiteral("icon")).toString(
+    object.value(QStringLiteral("emoji")).toString()
+  );
   return cell;
 }
 
@@ -27,7 +32,12 @@ QJsonObject cellToJson(const Cell& cell) {
   QJsonObject object;
   object.insert(QStringLiteral("soundId"), cell.soundId);
   object.insert(QStringLiteral("hotkey"), cell.hotkey);
+  object.insert(QStringLiteral("icon"), cell.icon);
   return object;
+}
+
+bool isEmptyCell(const Cell& cell) {
+  return cell.soundId.isEmpty() && cell.hotkey.isEmpty() && cell.icon.isEmpty();
 }
 
 }  // namespace
@@ -134,6 +144,7 @@ QJsonObject toJson(const SoundRecord& sound) {
   object.insert(QStringLiteral("createdAt"), sound.createdAt);
   object.insert(QStringLiteral("lastPlayedAt"), sound.lastPlayedAt);
   object.insert(QStringLiteral("playCount"), sound.playCount);
+  object.insert(QStringLiteral("durationMs"), sound.durationMs);
 
   QJsonArray tags;
   for (const QString& tag : sound.tags) {
@@ -153,7 +164,7 @@ QJsonObject toJson(const BoardRecord& board) {
 
   QJsonArray cells;
   for (const Cell& cell : board.cells) {
-    if (cell.soundId.isEmpty()) {
+    if (isEmptyCell(cell)) {
       cells.push_back(QJsonValue::Null);
     } else {
       cells.push_back(cellToJson(cell));
@@ -187,7 +198,9 @@ SoundRecord soundFromJson(const QJsonObject& object) {
   sound.soundId = object.value(QStringLiteral("soundId")).toString(createId(QStringLiteral("sound")));
   sound.filename = object.value(QStringLiteral("filename")).toString();
   sound.displayName = object.value(QStringLiteral("displayName")).toString(extractDisplayName(sound.filename));
-  sound.icon = object.value(QStringLiteral("icon")).toString(QStringLiteral("S"));
+  sound.icon = object.value(QStringLiteral("icon")).toString(
+    object.value(QStringLiteral("emoji")).toString(QStringLiteral("S"))
+  );
   sound.color = object.value(QStringLiteral("color")).toString();
   sound.sourceType = object.value(QStringLiteral("sourceType")).toString(QStringLiteral("local"));
   sound.sourceUrl = object.value(QStringLiteral("sourceUrl")).toString();
@@ -201,6 +214,7 @@ SoundRecord soundFromJson(const QJsonObject& object) {
   sound.createdAt = object.value(QStringLiteral("createdAt")).toString(nowIso());
   sound.lastPlayedAt = object.value(QStringLiteral("lastPlayedAt")).toString();
   sound.playCount = object.value(QStringLiteral("playCount")).toInt(0);
+  sound.durationMs = object.value(QStringLiteral("durationMs")).toInt(0);
 
   const QJsonArray tags = object.value(QStringLiteral("tags")).toArray();
   for (const QJsonValue& tag : tags) {
@@ -275,8 +289,31 @@ AppState stateFromJson(const QJsonObject& libraryObject, const QJsonObject& boar
   if (state.boards.isEmpty()) {
     state.boards.push_back(createBoardRecord());
   }
-  if (state.activeBoardId.isEmpty()) {
+
+  bool activeBoardExists = false;
+  for (const BoardRecord& board : state.boards) {
+    if (board.id == state.activeBoardId) {
+      activeBoardExists = true;
+      break;
+    }
+  }
+  if (!activeBoardExists) {
     state.activeBoardId = state.boards.front().id;
+  }
+
+  QHash<QString, QString> legacySoundIcons;
+  for (const SoundRecord& sound : state.library) {
+    if (!sound.soundId.isEmpty() && !sound.icon.isEmpty()) {
+      legacySoundIcons.insert(sound.soundId, sound.icon);
+    }
+  }
+  for (BoardRecord& board : state.boards) {
+    for (Cell& cell : board.cells) {
+      if (!cell.soundId.isEmpty() && cell.icon.isEmpty() && !cell.iconExplicit) {
+        cell.icon = legacySoundIcons.value(cell.soundId);
+        cell.iconExplicit = !cell.icon.isEmpty();
+      }
+    }
   }
   return state;
 }

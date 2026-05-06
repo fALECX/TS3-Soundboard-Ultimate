@@ -9,11 +9,14 @@
 
 class QComboBox;
 class QCheckBox;
+class QHBoxLayout;
 class QGridLayout;
 class QLabel;
 class QLineEdit;
 class QListWidget;
+class QListWidgetItem;
 class QPushButton;
+class QScrollArea;
 class QSlider;
 class QSpinBox;
 class QTableWidget;
@@ -31,6 +34,7 @@ class MainWindow : public QWidget {
   void setPreviewStatus(const QString& title, int durationMs, bool playing);
 
   std::function<void(const QString& boardId)> onBoardSelected;
+  std::function<void(const QString& name, int rows, int cols)> onCreateBoard;
   std::function<void(const QString& soundId)> onPlaySound;
   std::function<void()> onStopPreview;
   std::function<void(int cellIndex)> onImportSound;
@@ -46,7 +50,7 @@ class MainWindow : public QWidget {
   std::function<void(bool enabled)> onShowHotkeysOnButtonsChanged;
   std::function<void(bool enabled)> onGlobalHotkeysEnabledChanged;
   std::function<void(int rows, int cols)> onActiveBoardSizeChanged;
-  std::function<void(const QString& soundId, const QString& emoji)> onSoundEmojiChanged;
+  std::function<void(int cellIndex, const QString& emoji)> onCellEmojiChanged;
   std::function<void(const QString& soundId, const QString& displayName)> onSoundRenamed;
 
  private:
@@ -56,12 +60,20 @@ class MainWindow : public QWidget {
   const BoardRecord* activeBoard() const;
   void setSelectedCell(int cellIndex);
   void handleCellClick(int cellIndex, const QString& soundId);
+  void openCreateBoardDialog();
   void openYouTubeDialog();
   void showRenameDialog(const QString& soundId);
+  QString displayNameForItem(const QListWidgetItem* item) const;
 
   AppState state_;
   QComboBox* boardSelector_ = nullptr;
+  QToolButton* addBoardButton_ = nullptr;
+  QWidget* boardNavFrame_ = nullptr;
+  QWidget* pagerFrame_ = nullptr;
+  QScrollArea* gridScrollArea_ = nullptr;
   QWidget* gridHost_ = nullptr;
+  QHBoxLayout* boardNavLayout_ = nullptr;
+  QHBoxLayout* pagerLayout_ = nullptr;
   QGridLayout* gridLayout_ = nullptr;
   QListWidget* libraryList_ = nullptr;
   QLabel* statusLabel_ = nullptr;
@@ -85,8 +97,8 @@ class MainWindow : public QWidget {
   int selectedCellIndex_ = -1;
   bool rebuildingUi_ = false;
   bool darkMode_ = false;
-  QVector<QPushButton*> cellButtons_;
-  QVector<QPushButton*> deleteButtons_;
+  QVector<QWidget*> cellCards_;
+  QVector<QPushButton*> pageButtons_;
 };
 
 }  // namespace rpsu

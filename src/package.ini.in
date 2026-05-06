@@ -1,6 +1,6 @@
 Name = RP Soundboard Ultimate
 Type = Plugin
-Author = OpenAI Codex
+Author = fALECX
 Version = @RPSU_PACKAGE_VERSION@
 Platforms = win64
 Description = Native TeamSpeak 3 soundboard plugin for RP Soundboard Ultimate.

@@ -68,7 +68,7 @@ int ts3plugin_apiVersion() {
 }
 
 const char* ts3plugin_author() {
-  return "OpenAI Codex";
+  return "fALECX";
 }
 
 const char* ts3plugin_description() {

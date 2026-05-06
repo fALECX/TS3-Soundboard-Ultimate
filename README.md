@@ -8,6 +8,13 @@ Created and maintained by fALECX.
 
 RP Soundboard Ultimate is an open-source TeamSpeak 3 soundboard plugin for Windows. It ships as a native TS3 plugin package, not as a separate Electron app.
 
+## Install
+
+1. Go to [**Releases**](https://github.com/fALECX/TS3-Soundboard-Ultimate/releases/latest) and download `rp_soundboard_ultimate_*.ts3_plugin`
+2. Double-click the downloaded file — TeamSpeak opens the plugin installer automatically
+3. Restart TeamSpeak
+4. The soundboard is available under **Plugins → RP Soundboard Ultimate** in the TS3 menu
+
 ## What It Does
 
 - Injects sound playback directly into TeamSpeak captured voice
