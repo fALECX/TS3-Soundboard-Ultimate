@@ -52,6 +52,7 @@ class MainWindow : public QWidget {
   std::function<void(int rows, int cols)> onActiveBoardSizeChanged;
   std::function<void(int cellIndex, const QString& emoji)> onCellEmojiChanged;
   std::function<void(const QString& soundId, const QString& displayName)> onSoundRenamed;
+  std::function<void(int cellIndex, const QString& hotkey)> onCellHotkeyChanged;
 
  private:
   void rebuild();

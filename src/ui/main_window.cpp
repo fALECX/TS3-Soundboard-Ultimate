@@ -17,6 +17,9 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
+#include <QKeyEvent>
+#include <QKeySequence>
+#include <QShowEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -452,6 +455,154 @@ class YouTubeSearchDialog : public QDialog {
   QString       lastQuery_;
   int           currentLimit_   = 0;
   static constexpr int kPageSize = 12;
+};
+
+class HotkeyInputDialog : public QDialog {
+ public:
+  explicit HotkeyInputDialog(const QString& currentHotkey, QWidget* parent = nullptr)
+      : QDialog(parent), key1_(currentHotkey) {
+    setWindowTitle(QStringLiteral("Set Hotkey"));
+    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
+    setFixedSize(420, 210);
+
+    auto* layout = new QVBoxLayout(this);
+    layout->setSpacing(10);
+    layout->setContentsMargins(20, 20, 20, 20);
+
+    auto* prompt = new QLabel(
+      QStringLiteral("Click a box then press a key. Second box is optional."), this);
+    layout->addWidget(prompt);
+
+    auto* boxRow = new QHBoxLayout();
+    boxRow->setSpacing(8);
+
+    box1_ = new QPushButton(key1_.isEmpty() ? QStringLiteral("(click to set)") : key1_, this);
+    box1_->setMinimumHeight(56);
+    box1_->setFocusPolicy(Qt::NoFocus);
+    boxRow->addWidget(box1_, 1);
+
+    auto* plusLabel = new QLabel(QStringLiteral("+"), this);
+    plusLabel->setAlignment(Qt::AlignCenter);
+    plusLabel->setFixedWidth(24);
+    boxRow->addWidget(plusLabel);
+
+    box2_ = new QPushButton(QStringLiteral("(optional)"), this);
+    box2_->setMinimumHeight(56);
+    box2_->setFocusPolicy(Qt::NoFocus);
+    boxRow->addWidget(box2_, 1);
+
+    layout->addLayout(boxRow);
+
+    auto* hintLabel = new QLabel(
+      QStringLiteral("Hotkeys activate after restarting the TeamSpeak plugin."), this);
+    hintLabel->setStyleSheet(QStringLiteral("font-size: 11px; color: #888;"));
+    hintLabel->setWordWrap(true);
+    layout->addWidget(hintLabel);
+
+    auto* btnRow = new QHBoxLayout();
+    auto* clearBtn = new QPushButton(QStringLiteral("Clear"), this);
+    clearBtn->setFixedWidth(80);
+    clearBtn->setFocusPolicy(Qt::NoFocus);
+    btnRow->addWidget(clearBtn);
+    btnRow->addStretch();
+    auto* buttonBox = new QDialogButtonBox(
+      QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    btnRow->addWidget(buttonBox);
+    layout->addLayout(btnRow);
+
+    connect(box1_, &QPushButton::clicked, this, [this]() {
+      activeBox_ = 1;
+      updateBoxStyles();
+      setFocus();
+    });
+    connect(box2_, &QPushButton::clicked, this, [this]() {
+      activeBox_ = 2;
+      updateBoxStyles();
+      setFocus();
+    });
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(clearBtn, &QPushButton::clicked, this, [this]() {
+      key1_.clear();
+      key2_.clear();
+      box1_->setText(QStringLiteral("(click to set)"));
+      box2_->setText(QStringLiteral("(optional)"));
+      activeBox_ = 0;
+      updateBoxStyles();
+    });
+
+    updateBoxStyles();
+  }
+
+  QString hotkey() const {
+    if (key1_.isEmpty()) return QString();
+    if (key2_.isEmpty()) return key1_;
+    return key1_ + QStringLiteral("+") + key2_;
+  }
+
+ protected:
+  void showEvent(QShowEvent* event) override {
+    QDialog::showEvent(event);
+    setFocus();
+  }
+
+  void keyPressEvent(QKeyEvent* event) override {
+    const int key = event->key();
+
+    if (activeBox_ == 0) {
+      if (key == Qt::Key_Escape) { reject(); return; }
+      if (key == Qt::Key_Return || key == Qt::Key_Enter) { accept(); return; }
+      return;
+    }
+
+    if (key == Qt::Key_unknown) return;
+    if (key == Qt::Key_Escape) {
+      activeBox_ = 0;
+      updateBoxStyles();
+      return;
+    }
+    if (key == Qt::Key_Return || key == Qt::Key_Enter) {
+      accept();
+      return;
+    }
+
+    QString captured;
+    if (key == Qt::Key_Control || key == Qt::Key_Shift ||
+        key == Qt::Key_Alt || key == Qt::Key_Meta) {
+      captured = QKeySequence(key).toString(QKeySequence::NativeText);
+    } else {
+      captured = QKeySequence(static_cast<int>(event->modifiers()) | key)
+                     .toString(QKeySequence::NativeText);
+    }
+
+    if (activeBox_ == 1) {
+      key1_ = captured;
+      box1_->setText(captured);
+    } else {
+      key2_ = captured;
+      box2_->setText(captured);
+    }
+    activeBox_ = 0;
+    updateBoxStyles();
+  }
+
+ private:
+  void updateBoxStyles() {
+    const QString activeStyle = QStringLiteral(
+      "QPushButton { font-size: 16px; font-weight: bold; background: transparent; "
+      "border: 2px solid #3b82f6; border-radius: 6px; padding: 8px; }");
+    const QString normalStyle = QStringLiteral(
+      "QPushButton { font-size: 16px; font-weight: bold; background: transparent; "
+      "border: 1px solid #aaa; border-radius: 6px; padding: 8px; }");
+    box1_->setStyleSheet(activeBox_ == 1 ? activeStyle : normalStyle);
+    box2_->setStyleSheet(activeBox_ == 2 ? activeStyle : normalStyle);
+  }
+
+  int activeBox_ = 0;
+  QString key1_;
+  QString key2_;
+  QPushButton* box1_ = nullptr;
+  QPushButton* box2_ = nullptr;
 };
 
 }  // anonymous namespace
@@ -1276,6 +1427,16 @@ void MainWindow::rebuild() {
           EmojiPicker picker(currentIcon, this);
           if (picker.exec() == QDialog::Accepted && onCellEmojiChanged) {
             onCellEmojiChanged(index, picker.selectedEmoji());
+          }
+        });
+        contextMenu.addAction(QStringLiteral("Set Hotkey..."), this, [this, index]() {
+          const BoardRecord* active = activeBoard();
+          const QString currentHotkey = active && index >= 0 && index < active->cells.size()
+            ? active->cells[index].hotkey
+            : QString();
+          HotkeyInputDialog dlg(currentHotkey, this);
+          if (dlg.exec() == QDialog::Accepted && onCellHotkeyChanged) {
+            onCellHotkeyChanged(index, dlg.hotkey());
           }
         });
         if (!currentSoundId.isEmpty()) {
