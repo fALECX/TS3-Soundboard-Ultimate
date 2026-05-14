@@ -18,6 +18,16 @@
 
 namespace rpsu {
 
+#ifdef _WIN32
+void hideProcessWindow(QProcess& process) {
+  process.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* args) {
+    args->flags |= CREATE_NO_WINDOW;
+  });
+}
+#else
+void hideProcessWindow(QProcess&) {}
+#endif
+
 namespace {
 
 QString firstLine(const QString& text) {
@@ -32,6 +42,7 @@ QString firstLine(const QString& text) {
 
 QString runWhereCommand(const QString& executable) {
   QProcess process;
+  hideProcessWindow(process);
   process.start(QStringLiteral("where"), { executable });
   if (!process.waitForFinished(5000) || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
     return QString();
@@ -138,6 +149,7 @@ QVector<YouTubeSearchResult> YouTubeService::search(const QString& query, int li
   }
 
   QProcess process;
+  hideProcessWindow(process);
   process.start(
     ytDlpPath,
     {
@@ -225,6 +237,7 @@ bool YouTubeService::downloadAudio(
   const QString outputTemplate = QDir(soundsDir).filePath(QFileInfo(desiredFilename).completeBaseName() + QStringLiteral(".%(ext)s"));
 
   QProcess process;
+  hideProcessWindow(process);
   process.setWorkingDirectory(soundsDir);
   process.start(
     ytDlpPath,
@@ -313,6 +326,7 @@ bool YouTubeService::downloadPreviewAudio(
   QFile::remove(absolutePreviewPath);
 
   QProcess process;
+  hideProcessWindow(process);
   process.setWorkingDirectory(previewDir);
   process.start(
     ytDlpPath,
