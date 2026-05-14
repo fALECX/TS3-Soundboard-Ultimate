@@ -134,6 +134,9 @@ class PluginContext {
       window_->onSoundRenamed = [this](const QString& soundId, const QString& displayName) {
         renameSoundDisplay(soundId, displayName);
       };
+      window_->onCellHotkeyChanged = [this](int cellIndex, const QString& hotkey) {
+        setCellHotkey(cellIndex, hotkey);
+      };
     }
 
     refreshWindow();
@@ -382,6 +385,20 @@ class PluginContext {
     for (SoundRecord& sound : state_.library) {
       if (sound.soundId == soundId) {
         sound.displayName = displayName;
+        storage_.saveState(state_);
+        refreshWindow();
+        return;
+      }
+    }
+  }
+
+  void setCellHotkey(int cellIndex, const QString& hotkey) {
+    if (cellIndex < 0) {
+      return;
+    }
+    for (BoardRecord& board : state_.boards) {
+      if (board.id == state_.activeBoardId && cellIndex < board.cells.size()) {
+        board.cells[cellIndex].hotkey = hotkey;
         storage_.saveState(state_);
         refreshWindow();
         return;

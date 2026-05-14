@@ -17,6 +17,8 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
+#include <QKeyEvent>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -452,6 +454,82 @@ class YouTubeSearchDialog : public QDialog {
   QString       lastQuery_;
   int           currentLimit_   = 0;
   static constexpr int kPageSize = 12;
+};
+
+class HotkeyInputDialog : public QDialog {
+ public:
+  explicit HotkeyInputDialog(const QString& currentHotkey, QWidget* parent = nullptr)
+      : QDialog(parent), hotkey_(currentHotkey) {
+    setWindowTitle(QStringLiteral("Set Hotkey"));
+    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
+    setFixedSize(320, 190);
+
+    auto* layout = new QVBoxLayout(this);
+    layout->setSpacing(10);
+    layout->setContentsMargins(20, 20, 20, 20);
+
+    auto* prompt = new QLabel(QStringLiteral("Press any key to assign as hotkey:"), this);
+    layout->addWidget(prompt);
+
+    keyLabel_ = new QLabel(
+      currentHotkey.isEmpty() ? QStringLiteral("(none)") : currentHotkey, this);
+    keyLabel_->setAlignment(Qt::AlignCenter);
+    keyLabel_->setStyleSheet(QStringLiteral(
+      "font-size: 18px; font-weight: bold; padding: 14px; "
+      "border: 1px solid #aaa; border-radius: 6px;"
+    ));
+    layout->addWidget(keyLabel_);
+
+    auto* hintLabel = new QLabel(
+      QStringLiteral("Hotkeys activate after restarting the TeamSpeak plugin."), this);
+    hintLabel->setStyleSheet(QStringLiteral("font-size: 11px; color: #888;"));
+    hintLabel->setWordWrap(true);
+    layout->addWidget(hintLabel);
+
+    auto* btnRow = new QHBoxLayout();
+    auto* clearBtn = new QPushButton(QStringLiteral("Clear"), this);
+    clearBtn->setFixedWidth(80);
+    btnRow->addWidget(clearBtn);
+    btnRow->addStretch();
+    auto* buttonBox = new QDialogButtonBox(
+      QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    btnRow->addWidget(buttonBox);
+    layout->addLayout(btnRow);
+
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(clearBtn, &QPushButton::clicked, this, [this]() {
+      hotkey_.clear();
+      keyLabel_->setText(QStringLiteral("(none)"));
+    });
+  }
+
+  QString hotkey() const { return hotkey_; }
+
+ protected:
+  void keyPressEvent(QKeyEvent* event) override {
+    const int key = event->key();
+    if (key == Qt::Key_Control || key == Qt::Key_Shift ||
+        key == Qt::Key_Alt || key == Qt::Key_Meta ||
+        key == Qt::Key_unknown) {
+      return;
+    }
+    if (key == Qt::Key_Escape) {
+      reject();
+      return;
+    }
+    if (key == Qt::Key_Return || key == Qt::Key_Enter) {
+      accept();
+      return;
+    }
+    const QKeySequence seq(static_cast<int>(event->modifiers()) | key);
+    hotkey_ = seq.toString(QKeySequence::NativeText);
+    keyLabel_->setText(hotkey_);
+  }
+
+ private:
+  QString hotkey_;
+  QLabel* keyLabel_ = nullptr;
 };
 
 }  // anonymous namespace
@@ -1276,6 +1354,16 @@ void MainWindow::rebuild() {
           EmojiPicker picker(currentIcon, this);
           if (picker.exec() == QDialog::Accepted && onCellEmojiChanged) {
             onCellEmojiChanged(index, picker.selectedEmoji());
+          }
+        });
+        contextMenu.addAction(QStringLiteral("Set Hotkey..."), this, [this, index]() {
+          const BoardRecord* active = activeBoard();
+          const QString currentHotkey = active && index >= 0 && index < active->cells.size()
+            ? active->cells[index].hotkey
+            : QString();
+          HotkeyInputDialog dlg(currentHotkey, this);
+          if (dlg.exec() == QDialog::Accepted && onCellHotkeyChanged) {
+            onCellHotkeyChanged(index, dlg.hotkey());
           }
         });
         if (!currentSoundId.isEmpty()) {
