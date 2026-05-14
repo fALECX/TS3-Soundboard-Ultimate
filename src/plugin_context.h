@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <QFileDialog>
 #include <QDir>
 #include <QFile>
@@ -81,8 +83,8 @@ class PluginContext {
       window_->onYouTubePreview = [this](const YouTubeSearchResult& result, QString* errorMessage) {
         return previewYouTube(result, errorMessage);
       };
-      window_->onYouTubeDownload = [this](const YouTubeSearchResult& result, QString* errorMessage) {
-        return downloadYouTube(result, errorMessage);
+      window_->onYouTubeDownload = [this](const YouTubeSearchResult& result, QString* errorMessage, std::atomic<bool>* cancelFlag, std::atomic<int>* progressPct) {
+        return downloadYouTube(result, errorMessage, cancelFlag, progressPct);
       };
       window_->onYouTubePreview = [this](const YouTubeSearchResult& result, QString* errorMessage) {
         return previewYouTube(result, errorMessage);
@@ -429,14 +431,16 @@ class PluginContext {
     }
   }
 
-  QString downloadYouTube(const YouTubeSearchResult& result, QString* errorMessage) {
+  QString downloadYouTube(const YouTubeSearchResult& result, QString* errorMessage,
+                          std::atomic<bool>* cancelFlag = nullptr,
+                          std::atomic<int>* progressPct = nullptr) {
     QStringList existingNames;
     for (const SoundRecord& sound : state_.library) {
       existingNames.push_back(sound.filename);
     }
 
     QString filename;
-    if (!youtube_.downloadAudio(result, storage_.soundsDir(), existingNames, &filename, errorMessage)) {
+    if (!youtube_.downloadAudio(result, storage_.soundsDir(), existingNames, &filename, errorMessage, cancelFlag, progressPct)) {
       return QString();
     }
 
