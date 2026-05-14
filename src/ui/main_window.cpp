@@ -1,6 +1,7 @@
 #include "src/ui/main_window.h"
 #include "src/ui/emoji_picker.h"
 
+#include <atomic>
 #include <chrono>
 #include <future>
 
@@ -24,6 +25,7 @@
 #include <QMessageBox>
 #include <QMenu>
 #include <QPixmap>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
@@ -228,9 +230,33 @@ class YouTubeSearchDialog : public QDialog {
     topRow->addWidget(loadMoreButton_);
     root->addLayout(topRow);
 
+    auto* statusRow = new QHBoxLayout();
+    statusRow->setSpacing(8);
     statusLabel_ = new QLabel(QStringLiteral("Enter a search term and press Search."), this);
     statusLabel_->setStyleSheet(QStringLiteral("color: %1;").arg(t.textMuted));
-    root->addWidget(statusLabel_);
+    cancelButton_ = new QPushButton(QStringLiteral("Cancel"), this);
+    cancelButton_->setStyleSheet(
+      QStringLiteral("QPushButton { padding: 4px 12px; border-radius: 6px;"
+                     " background: #c0392b; border-color: #922b21; color: #fff; font-weight: 600; }"
+                     "QPushButton:hover { background: #e74c3c; }"
+                     "QPushButton:disabled { background: #7b241c; color: #d5a5a5; }")
+    );
+    cancelButton_->setVisible(false);
+    statusRow->addWidget(statusLabel_, 1);
+    statusRow->addWidget(cancelButton_);
+    root->addLayout(statusRow);
+
+    progressBar_ = new QProgressBar(this);
+    progressBar_->setRange(0, 0);
+    progressBar_->setTextVisible(false);
+    progressBar_->setFixedHeight(5);
+    progressBar_->setVisible(false);
+    progressBar_->setStyleSheet(
+      QStringLiteral("QProgressBar { border: none; background: %1; border-radius: 2px; }"
+                     "QProgressBar::chunk { background: %2; border-radius: 2px; }")
+        .arg(t.surfaceBorder, t.accentBorder)
+    );
+    root->addWidget(progressBar_);
 
     // Results table
     resultsTable_ = new QTableWidget(this);
@@ -274,6 +300,11 @@ class YouTubeSearchDialog : public QDialog {
     connect(queryEdit_,      &QLineEdit::returnPressed,       this, [this]() { runSearch(); });
     connect(downloadButton_, &QPushButton::clicked,           this, [this]() { downloadSelected(); });
     connect(closeButton_,    &QPushButton::clicked,           this, &QDialog::reject);
+    connect(cancelButton_,   &QPushButton::clicked,           this, [this]() {
+      cancelRequested_.store(true);
+      cancelButton_->setEnabled(false);
+      statusLabel_->setText(QStringLiteral("Cancelling…"));
+    });
     connect(resultsTable_,   &QTableWidget::cellDoubleClicked,this, [this](int row, int) {
       resultsTable_->selectRow(row);
       downloadSelected();
@@ -287,10 +318,34 @@ class YouTubeSearchDialog : public QDialog {
     loadingTick_ = 0;
     auto future = std::async(std::launch::async, std::forward<Fn>(fn));
     while (future.wait_for(std::chrono::milliseconds(80)) != std::future_status::ready) {
-      updateLoadingMessage(msg);
+      if (progressBar_->isVisible()) {
+        const int pct = downloadProgress_.load();
+        if (pct >= 0 && pct < 100) {
+          if (progressBar_->maximum() != 100) progressBar_->setRange(0, 100);
+          progressBar_->setValue(pct);
+          static const char* frames[] = { ".", "..", "...", "...." };
+          statusLabel_->setText(
+            QStringLiteral("Downloading (%1%)").arg(pct)
+            + QString::fromLatin1(frames[loadingTick_ % 4])
+          );
+          ++loadingTick_;
+        } else if (pct == 100) {
+          if (progressBar_->maximum() != 0) progressBar_->setRange(0, 0);
+          static const char* frames[] = { ".", "..", "...", "...." };
+          statusLabel_->setText(
+            QStringLiteral("Converting to WAV")
+            + QString::fromLatin1(frames[loadingTick_ % 4])
+          );
+          ++loadingTick_;
+        } else {
+          if (progressBar_->maximum() != 0) progressBar_->setRange(0, 0);
+          updateLoadingMessage(msg);
+        }
+      } else {
+        updateLoadingMessage(msg);
+      }
       QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
     }
-    updateLoadingMessage(msg);
     auto result = future.get();
     setBusy(false);
     return result;
@@ -424,10 +479,27 @@ class YouTubeSearchDialog : public QDialog {
       statusLabel_->setText(QStringLiteral("YouTube download is not available in this build."));
       return;
     }
+
+    cancelRequested_.store(false);
+    downloadProgress_.store(-1);
+    cancelButton_->setEnabled(true);
+    cancelButton_->setVisible(true);
+    progressBar_->setRange(0, 0);
+    progressBar_->setVisible(true);
+
     QString error;
-    const QString soundId = runWithLoading(QStringLiteral("Downloading audio"), [this, index, &error]() {
-      return owner_->onYouTubeDownload(results_[index], &error);
-    });
+    const QString soundId = runWithLoading(
+      QStringLiteral("Downloading audio"),
+      [this, index, &error]() {
+        return owner_->onYouTubeDownload(results_[index], &error, &cancelRequested_, &downloadProgress_);
+      }
+    );
+
+    cancelButton_->setVisible(false);
+    progressBar_->setVisible(false);
+    progressBar_->setRange(0, 100);
+    downloadProgress_.store(-1);
+
     if (soundId.isEmpty()) {
       statusLabel_->setText(error.isEmpty() ? QStringLiteral("Download failed.") : error);
       return;
@@ -441,16 +513,20 @@ class YouTubeSearchDialog : public QDialog {
   bool          darkMode_;
   QLineEdit*    queryEdit_      = nullptr;
   QLabel*       statusLabel_    = nullptr;
+  QProgressBar* progressBar_    = nullptr;
   QTableWidget* resultsTable_   = nullptr;
   QVector<YouTubeSearchResult> results_;
   QPushButton*  searchButton_   = nullptr;
   QPushButton*  loadMoreButton_ = nullptr;
   QPushButton*  downloadButton_ = nullptr;
   QPushButton*  closeButton_    = nullptr;
+  QPushButton*  cancelButton_   = nullptr;
   bool          busy_           = false;
   int           loadingTick_    = 0;
   QString       lastQuery_;
   int           currentLimit_   = 0;
+  std::atomic<bool> cancelRequested_{false};
+  std::atomic<int>  downloadProgress_{-1};
   static constexpr int kPageSize = 12;
 };
 

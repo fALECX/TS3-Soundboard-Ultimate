@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <QString>
 #include <QVector>
 
@@ -27,7 +29,9 @@ class YouTubeService {
     const QString& soundsDir,
     const QStringList& existingNames,
     QString* importedFilename,
-    QString* errorMessage
+    QString* errorMessage,
+    std::atomic<bool>* cancelFlag = nullptr,
+    std::atomic<int>* progressPct = nullptr
   ) const;
 
  private:

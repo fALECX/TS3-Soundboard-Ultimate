@@ -200,7 +200,9 @@ bool YouTubeService::downloadAudio(
   const QString& soundsDir,
   const QStringList& existingNames,
   QString* importedFilename,
-  QString* errorMessage
+  QString* errorMessage,
+  std::atomic<bool>* cancelFlag,
+  std::atomic<int>* progressPct
 ) const {
   QString ytDlpError;
   const QString ytDlpPath = resolveYtDlpPath(&ytDlpError);
@@ -239,17 +241,52 @@ bool YouTubeService::downloadAudio(
       QFileInfo(ffmpegPath).absolutePath(),
       QStringLiteral("--no-playlist"),
       QStringLiteral("--no-warnings"),
+      QStringLiteral("--newline"),
       QStringLiteral("-o"),
       outputTemplate
     }
   );
 
-  if (!process.waitForFinished(180000)) {
-    process.kill();
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("YouTube download timed out.");
+  static const QRegularExpression kProgressRe(
+    QStringLiteral(R"(\[download\]\s+(\d+(?:\.\d+)?)%)")
+  );
+
+  QString stdoutBuf;
+  int elapsedMs = 0;
+  const int kTimeoutMs = 180000;
+
+  while (true) {
+    if (process.waitForFinished(200)) break;
+
+    elapsedMs += 200;
+
+    if (cancelFlag && cancelFlag->load()) {
+      process.kill();
+      process.waitForFinished(3000);
+      if (errorMessage) *errorMessage = QStringLiteral("Download cancelled.");
+      return false;
     }
-    return false;
+
+    if (elapsedMs >= kTimeoutMs) {
+      process.kill();
+      process.waitForFinished(3000);
+      if (errorMessage) *errorMessage = QStringLiteral("YouTube download timed out.");
+      return false;
+    }
+
+    if (progressPct) {
+      stdoutBuf += QString::fromLocal8Bit(process.readAllStandardOutput());
+      if (stdoutBuf.contains(QStringLiteral("[ExtractAudio]"))) {
+        progressPct->store(100);
+      } else {
+        QRegularExpressionMatchIterator it = kProgressRe.globalMatch(stdoutBuf);
+        QRegularExpressionMatch last;
+        while (it.hasNext()) last = it.next();
+        if (last.hasMatch()) {
+          progressPct->store(qBound(0, static_cast<int>(last.captured(1).toDouble()), 99));
+        }
+      }
+    }
   }
 
   if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {

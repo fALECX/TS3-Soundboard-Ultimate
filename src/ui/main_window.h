@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
 
 #include <QWidget>
@@ -41,7 +42,7 @@ class MainWindow : public QWidget {
   std::function<void(const QString& soundId, int cellIndex)> onAssignSoundToCell;
   std::function<QVector<YouTubeSearchResult>(const QString& query, int limit, QString* errorMessage)> onYouTubeSearch;
   std::function<bool(const YouTubeSearchResult& result, QString* errorMessage)> onYouTubePreview;
-  std::function<QString(const YouTubeSearchResult& result, QString* errorMessage)> onYouTubeDownload;
+  std::function<QString(const YouTubeSearchResult& result, QString* errorMessage, std::atomic<bool>* cancelFlag, std::atomic<int>* progressPct)> onYouTubeDownload;
   std::function<void(const QString& apiKey)> onFreesoundApiKeyChanged;
   std::function<void(int value)> onVolumeRemoteChanged;
   std::function<void(int value)> onVolumeLocalChanged;
