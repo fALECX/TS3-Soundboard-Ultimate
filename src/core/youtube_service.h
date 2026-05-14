@@ -33,6 +33,11 @@ class YouTubeService {
  private:
   QString resolveYtDlpPath(QString* errorMessage) const;
   QString resolveFfmpegPath(QString* errorMessage) const;
+
+  mutable QString cachedYtDlpPath_;
+  mutable QString cachedFfmpegPath_;
+  mutable bool ytDlpPathCached_ = false;
+  mutable bool ffmpegPathCached_ = false;
 };
 
 }  // namespace rpsu

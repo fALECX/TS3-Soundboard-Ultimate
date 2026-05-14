@@ -89,51 +89,77 @@ QString moduleDirectory() {
 }  // namespace
 
 QString YouTubeService::resolveYtDlpPath(QString* errorMessage) const {
+  if (ytDlpPathCached_) {
+    if (errorMessage && cachedYtDlpPath_.isEmpty()) {
+      *errorMessage = QStringLiteral("yt-dlp.exe is missing from the packaged dashboard files.");
+    }
+    return cachedYtDlpPath_;
+  }
+
   const QStringList bundledCandidates = {
     QDir(moduleDirectory()).filePath(QStringLiteral("yt-dlp.exe")),
     QDir(moduleDirectory()).filePath(QStringLiteral("rp_soundboard_ultimate/yt-dlp.exe"))
   };
   for (const QString& bundledPath : bundledCandidates) {
     if (QFileInfo::exists(bundledPath)) {
+      cachedYtDlpPath_ = bundledPath;
+      ytDlpPathCached_ = true;
       return bundledPath;
     }
   }
 
   const QString pathTool = runWhereCommand(QStringLiteral("yt-dlp"));
   if (!pathTool.isEmpty()) {
+    cachedYtDlpPath_ = pathTool;
+    ytDlpPathCached_ = true;
     return pathTool;
   }
 
   if (errorMessage) {
     *errorMessage = QStringLiteral("yt-dlp.exe is missing from the packaged dashboard files.");
   }
+  ytDlpPathCached_ = true;
   return QString();
 }
 
 QString YouTubeService::resolveFfmpegPath(QString* errorMessage) const {
+  if (ffmpegPathCached_) {
+    if (errorMessage && cachedFfmpegPath_.isEmpty()) {
+      *errorMessage = QStringLiteral("ffmpeg.exe was not found. Install FFmpeg or add it to PATH.");
+    }
+    return cachedFfmpegPath_;
+  }
+
   const QStringList bundledCandidates = {
     QDir(moduleDirectory()).filePath(QStringLiteral("ffmpeg.exe")),
     QDir(moduleDirectory()).filePath(QStringLiteral("rp_soundboard_ultimate/ffmpeg.exe"))
   };
   for (const QString& bundledPath : bundledCandidates) {
     if (QFileInfo::exists(bundledPath)) {
+      cachedFfmpegPath_ = bundledPath;
+      ffmpegPathCached_ = true;
       return bundledPath;
     }
   }
 
   const QString localPath = runWhereCommand(QStringLiteral("ffmpeg"));
   if (!localPath.isEmpty()) {
+    cachedFfmpegPath_ = localPath;
+    ffmpegPathCached_ = true;
     return localPath;
   }
 
   const QString wingetPath = findWingetTool(QStringLiteral("ffmpeg.exe"));
   if (!wingetPath.isEmpty()) {
+    cachedFfmpegPath_ = wingetPath;
+    ffmpegPathCached_ = true;
     return wingetPath;
   }
 
   if (errorMessage) {
     *errorMessage = QStringLiteral("ffmpeg.exe was not found. Install FFmpeg or add it to PATH.");
   }
+  ffmpegPathCached_ = true;
   return QString();
 }
 
