@@ -1248,7 +1248,7 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   connect(darkModeButton_, &QToolButton::toggled, this, [this](bool on) {
     darkMode_ = on;
     darkModeButton_->setIcon(on ? makeSunIcon(24) : makeMoonIcon(24));
-    applyTheme();
+    rebuild();
     if (onDarkModeChanged) onDarkModeChanged(on);
   });
 
@@ -1489,11 +1489,7 @@ void MainWindow::applyTheme() {
        t.cellHover)          // 21
   );
 
-  if (!rebuildingUi_) {
-    rebuild();
-  } else {
-    setSelectedCell(selectedCellIndex_);
-  }
+  setSelectedCell(selectedCellIndex_);
 }
 
 // ---------------------------------------------------------------------------
@@ -1870,8 +1866,8 @@ void MainWindow::rebuild() {
       button->setToolTip(label);
       button->setContextMenuPolicy(Qt::CustomContextMenu);
       button->setStyleSheet(QStringLiteral(
-        "#cellButton { background: transparent; color: %1; font-size: %2px; font-weight: 600; }"
-      ).arg(t.textPrimary, QString::number(density >= 10 ? 10 : 12)));
+        "#cellButton { font-size: %1px; }"
+      ).arg(density >= 10 ? 10 : 12));
       cellLayout->addWidget(button, 1);
 
       gridLayout_->addWidget(cellWidget, row, col);
