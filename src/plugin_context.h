@@ -2,7 +2,9 @@
 
 #include <atomic>
 
+#include <QDateTime>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QDir>
 #include <QFile>
 #include <QHash>
@@ -85,9 +87,6 @@ class PluginContext {
       };
       window_->onYouTubeDownload = [this](const YouTubeSearchResult& result, QString* errorMessage, std::atomic<bool>* cancelFlag, std::atomic<int>* progressPct) {
         return downloadYouTube(result, errorMessage, cancelFlag, progressPct);
-      };
-      window_->onYouTubePreview = [this](const YouTubeSearchResult& result, QString* errorMessage) {
-        return previewYouTube(result, errorMessage);
       };
       window_->onFreesoundApiKeyChanged = [this](const QString& apiKey) {
         state_.config.freesoundApiKey = apiKey;
@@ -517,10 +516,16 @@ class PluginContext {
                                   .filePath(QStringLiteral("rpsu_youtube_preview"));
     QDir().mkpath(previewRoot);
 
+    // Stop MCI first so the previous WAV file isn't held open, then delete.
+    // Doing it in the wrong order leaks file handles and after many previews
+    // the MCI device can get into a bad state.
+    preview_.stop();
     if (!lastPreviewPath_.isEmpty()) {
       QFile::remove(lastPreviewPath_);
       lastPreviewPath_.clear();
     }
+    // Best-effort cleanup of any stale preview files from earlier sessions.
+    cleanupStalePreviewFiles(previewRoot);
 
     QString previewPath;
     if (!youtube_.downloadPreviewAudio(result, previewRoot, &previewPath, errorMessage)) {
@@ -541,6 +546,19 @@ class PluginContext {
     lastPreviewPath_ = previewPath;
     updatePreviewUi(result.title, previewDurationMs, true);
     return true;
+  }
+
+  // Remove leftover preview WAVs older than 10 minutes so we don't fill
+  // %TEMP%\rpsu_youtube_preview with junk over time.
+  void cleanupStalePreviewFiles(const QString& dir) {
+    QDir d(dir);
+    if (!d.exists()) return;
+    const auto cutoff = QDateTime::currentDateTime().addSecs(-600);
+    for (const QFileInfo& fi : d.entryInfoList({ QStringLiteral("*.wav") }, QDir::Files)) {
+      if (fi.lastModified() < cutoff && fi.absoluteFilePath() != lastPreviewPath_) {
+        QFile::remove(fi.absoluteFilePath());
+      }
+    }
   }
 
   StorageManager storage_;

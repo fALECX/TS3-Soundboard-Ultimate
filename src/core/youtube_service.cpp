@@ -228,6 +228,9 @@ bool YouTubeService::downloadAudio(
 
   QProcess process;
   process.setWorkingDirectory(soundsDir);
+  // Merge stderr into stdout so we drain a single pipe; yt-dlp's stderr can
+  // otherwise fill and block the child process on Windows (silent hang).
+  process.setProcessChannelMode(QProcess::MergedChannels);
   process.start(
     ytDlpPath,
     {
@@ -247,16 +250,39 @@ bool YouTubeService::downloadAudio(
     }
   );
 
+  if (!process.waitForStarted(10000)) {
+    if (errorMessage) *errorMessage = QStringLiteral("yt-dlp failed to start.");
+    return false;
+  }
+
   static const QRegularExpression kProgressRe(
     QStringLiteral(R"(\[download\]\s+(\d+(?:\.\d+)?)%)")
   );
 
-  QString stdoutBuf;
+  // Tail buffer: keep only the last ~4 KiB of output so regex stays O(1)
+  // and memory doesn't grow unbounded over long downloads.
+  QString tail;
+  QString lastErrLine;
   int elapsedMs = 0;
   const int kTimeoutMs = 180000;
 
+  auto drain = [&]() {
+    const QByteArray chunk = process.readAllStandardOutput();
+    if (chunk.isEmpty()) return;
+    tail.append(QString::fromLocal8Bit(chunk));
+    if (tail.size() > 4096) tail = tail.right(4096);
+    // Track last non-empty line as a candidate error message.
+    const QStringList lines = QString::fromLocal8Bit(chunk).split(
+      QRegularExpression(QStringLiteral("[\r\n]+")), Qt::SkipEmptyParts);
+    for (const QString& l : lines) {
+      const QString t = l.trimmed();
+      if (!t.isEmpty() && !t.startsWith(QLatin1Char('['))) lastErrLine = t;
+    }
+  };
+
   while (true) {
-    if (process.waitForFinished(200)) break;
+    if (process.waitForFinished(200)) { drain(); break; }
+    drain();
 
     elapsedMs += 200;
 
@@ -275,11 +301,10 @@ bool YouTubeService::downloadAudio(
     }
 
     if (progressPct) {
-      stdoutBuf += QString::fromLocal8Bit(process.readAllStandardOutput());
-      if (stdoutBuf.contains(QStringLiteral("[ExtractAudio]"))) {
+      if (tail.contains(QStringLiteral("[ExtractAudio]"))) {
         progressPct->store(100);
       } else {
-        QRegularExpressionMatchIterator it = kProgressRe.globalMatch(stdoutBuf);
+        QRegularExpressionMatchIterator it = kProgressRe.globalMatch(tail);
         QRegularExpressionMatch last;
         while (it.hasNext()) last = it.next();
         if (last.hasMatch()) {
@@ -291,7 +316,7 @@ bool YouTubeService::downloadAudio(
 
   if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
     if (errorMessage) {
-      *errorMessage = firstLine(QString::fromLocal8Bit(process.readAllStandardError()));
+      *errorMessage = !lastErrLine.isEmpty() ? lastErrLine : firstLine(tail);
       if (errorMessage->isEmpty()) {
         *errorMessage = QStringLiteral("YouTube download failed.");
       }
@@ -351,6 +376,8 @@ bool YouTubeService::downloadPreviewAudio(
 
   QProcess process;
   process.setWorkingDirectory(previewDir);
+  // Merge channels so we drain a single pipe and avoid stderr deadlocks.
+  process.setProcessChannelMode(QProcess::MergedChannels);
   process.start(
     ytDlpPath,
     {
@@ -372,17 +399,37 @@ bool YouTubeService::downloadPreviewAudio(
     }
   );
 
-  if (!process.waitForFinished(180000)) {
-    process.kill();
-    if (errorMessage) {
-      *errorMessage = QStringLiteral("YouTube preview timed out.");
-    }
+  if (!process.waitForStarted(10000)) {
+    if (errorMessage) *errorMessage = QStringLiteral("yt-dlp failed to start.");
     return false;
+  }
+
+  // Drain in a polling loop so the output pipe never fills up.
+  QString tail;
+  int elapsedMs = 0;
+  const int kTimeoutMs = 60000;  // 20s clip should never take longer than this
+  while (true) {
+    if (process.waitForFinished(200)) {
+      tail.append(QString::fromLocal8Bit(process.readAllStandardOutput()));
+      if (tail.size() > 4096) tail = tail.right(4096);
+      break;
+    }
+    tail.append(QString::fromLocal8Bit(process.readAllStandardOutput()));
+    if (tail.size() > 4096) tail = tail.right(4096);
+    elapsedMs += 200;
+    if (elapsedMs >= kTimeoutMs) {
+      process.kill();
+      process.waitForFinished(3000);
+      if (errorMessage) {
+        *errorMessage = QStringLiteral("YouTube preview timed out.");
+      }
+      return false;
+    }
   }
 
   if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
     if (errorMessage) {
-      *errorMessage = firstLine(QString::fromLocal8Bit(process.readAllStandardError()));
+      *errorMessage = firstLine(tail);
       if (errorMessage->isEmpty()) {
         *errorMessage = QStringLiteral("YouTube preview failed.");
       }

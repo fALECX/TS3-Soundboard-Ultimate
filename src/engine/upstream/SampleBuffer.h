@@ -26,7 +26,7 @@ class SampleBuffer : public SampleProducer {
   SampleBuffer(int channels, size_t maxSize = 0);
 
   void setOnProduce(ProduceCallback* cb);
-  ConsumeCallback* getOnProduce() const;
+  ProduceCallback* getOnProduce() const;
   void setOnConsume(ConsumeCallback* cb);
   ConsumeCallback* getOnConsume() const;
   int avail() const;
@@ -43,6 +43,7 @@ class SampleBuffer : public SampleProducer {
   const int m_channels;
   const size_t m_maxSize;
   std::vector<short> m_buf;
+  size_t m_readOffset;
   mutable std::mutex m_mutex;
   ProduceCallback* m_cbProd;
   ConsumeCallback* m_cbCons;

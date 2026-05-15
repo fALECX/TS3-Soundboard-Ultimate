@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <functional>
 #include <future>
 
@@ -17,6 +18,7 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHeaderView>
+#include <QHash>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
@@ -30,6 +32,7 @@
 #include <QListWidgetItem>
 #include <QMessageBox>
 #include <QMenu>
+#include <QCloseEvent>
 #include <QEasingCurve>
 #include <QPainter>
 #include <QPainterPath>
@@ -143,36 +146,84 @@ static Theme lightTheme() {
   return t;
 }
 
-// Deep blue-slate dark mode — not pitch black
+// Midnight slate dark mode — neutral near-black, no blue tint
 static Theme darkTheme() {
   Theme t;
-  t.windowBg            = QStringLiteral("#0f1623");
-  t.surfaceBg           = QStringLiteral("#162033");
-  t.surfaceBorder       = QStringLiteral("#253045");
-  t.textPrimary         = QStringLiteral("#e2e8f4");
-  t.textMuted           = QStringLiteral("#7a8fad");
-  t.inputBg             = QStringLiteral("#1a2640");
-  t.inputBorder         = QStringLiteral("#2e4060");
-  t.buttonBg            = QStringLiteral("#1e2f4a");
-  t.buttonBorder        = QStringLiteral("#2e4060");
-  t.buttonHover         = QStringLiteral("#243859");
-  t.buttonDisabled      = QStringLiteral("#151f30");
-  t.buttonDisabledText  = QStringLiteral("#4a5a72");
-  t.accentBg            = QStringLiteral("#1a3a5c");
-  t.accentBorder        = QStringLiteral("#2d5a8e");
-  t.tableAltRow         = QStringLiteral("#131d2e");
-  t.tableGridline       = QStringLiteral("#1e2d42");
-  t.headerBg            = QStringLiteral("#1a2a40");
-  t.headerText          = QStringLiteral("#c8d3e8");
-  t.previewBg           = QStringLiteral("#111b2c");
-  t.previewBorder       = QStringLiteral("#1e3050");
-  t.cellBorder          = QStringLiteral("#2a3d58");
-  t.cellBg              = QStringLiteral("#162033");
-  t.cellHover           = QStringLiteral("#1e3050");
+  t.windowBg            = QStringLiteral("#0e0f14");
+  t.surfaceBg           = QStringLiteral("#17181f");
+  t.surfaceBorder       = QStringLiteral("#2a2c37");
+  t.textPrimary         = QStringLiteral("#e4e6ed");
+  t.textMuted           = QStringLiteral("#6b7080");
+  t.inputBg             = QStringLiteral("#1e1f27");
+  t.inputBorder         = QStringLiteral("#333544");
+  t.buttonBg            = QStringLiteral("#22242f");
+  t.buttonBorder        = QStringLiteral("#33354a");
+  t.buttonHover         = QStringLiteral("#2b2d3d");
+  t.buttonDisabled      = QStringLiteral("#16171e");
+  t.buttonDisabledText  = QStringLiteral("#44475a");
+  t.accentBg            = QStringLiteral("#1e2d4a");
+  t.accentBorder        = QStringLiteral("#2f4d80");
+  t.tableAltRow         = QStringLiteral("#131419");
+  t.tableGridline       = QStringLiteral("#22232d");
+  t.headerBg            = QStringLiteral("#1a1b24");
+  t.headerText          = QStringLiteral("#bbbec9");
+  t.previewBg           = QStringLiteral("#111218");
+  t.previewBorder       = QStringLiteral("#21222d");
+  t.cellBorder          = QStringLiteral("#2c2e3c");
+  t.cellBg              = QStringLiteral("#17181f");
+  t.cellHover           = QStringLiteral("#21222d");
   t.cellSelected        = QStringLiteral("#3b82f6");
-  t.statusBg            = QStringLiteral("#0d1620");
-  t.statusBorder        = QStringLiteral("#1a2840");
+  t.statusBg            = QStringLiteral("#0c0d11");
+  t.statusBorder        = QStringLiteral("#1e1f28");
   return t;
+}
+
+// ---------------------------------------------------------------------------
+// Dark mode toggle icon helpers
+// ---------------------------------------------------------------------------
+
+// Crescent moon drawn with two overlapping circles (subtraction via clip).
+static QIcon makeMoonIcon(int size) {
+  QPixmap pm(size, size);
+  pm.fill(Qt::transparent);
+  QPainter p(&pm);
+  p.setRenderHint(QPainter::Antialiasing);
+  const QColor fill(200, 210, 230);
+  // Full circle
+  p.setBrush(fill);
+  p.setPen(Qt::NoPen);
+  p.drawEllipse(pm.rect().adjusted(2, 2, -2, -2));
+  // Clip out the top-right quarter to form a crescent
+  p.setCompositionMode(QPainter::CompositionMode_Clear);
+  p.drawEllipse(QRectF(size * 0.22, size * 0.0, size * 0.72, size * 0.72));
+  p.end();
+  return QIcon(pm);
+}
+
+// Simple sun: central circle + 8 short rays.
+static QIcon makeSunIcon(int size) {
+  QPixmap pm(size, size);
+  pm.fill(Qt::transparent);
+  QPainter p(&pm);
+  p.setRenderHint(QPainter::Antialiasing);
+  const QColor fill(250, 200, 60);
+  const double cx = size / 2.0, cy = size / 2.0;
+  const double r  = size * 0.21;
+  const double ro = size * 0.42;
+  const double rw = size * 0.06;
+  p.setBrush(fill);
+  p.setPen(Qt::NoPen);
+  // Rays
+  for (int i = 0; i < 8; ++i) {
+    const double angle = i * M_PI / 4.0;
+    const double rx = cx + ro * std::cos(angle);
+    const double ry = cy + ro * std::sin(angle);
+    p.drawEllipse(QPointF(rx, ry), rw, rw);
+  }
+  // Core
+  p.drawEllipse(QPointF(cx, cy), r, r);
+  p.end();
+  return QIcon(pm);
 }
 
 // ---------------------------------------------------------------------------
@@ -218,6 +269,26 @@ class LambdaEventFilter : public QObject {
   bool eventFilter(QObject* obj, QEvent* ev) override { return handler_(obj, ev); }
  private:
   Handler handler_;
+};
+
+class WidgetUpdatesBlocker {
+ public:
+  explicit WidgetUpdatesBlocker(QWidget* widget)
+      : widget_(widget), wasEnabled_(widget ? widget->updatesEnabled() : false) {
+    if (widget_) {
+      widget_->setUpdatesEnabled(false);
+    }
+  }
+
+  ~WidgetUpdatesBlocker() {
+    if (widget_) {
+      widget_->setUpdatesEnabled(wasEnabled_);
+    }
+  }
+
+ private:
+  QWidget* widget_ = nullptr;
+  bool wasEnabled_ = false;
 };
 
 QString formatDuration(int seconds) {
@@ -334,7 +405,7 @@ class YouTubeSearchDialog : public QDialog {
     resultsTable_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Fixed);
     resultsTable_->setColumnWidth(1, 90);
     resultsTable_->setColumnWidth(2, 220);
-    resultsTable_->setColumnWidth(3, 210);
+    resultsTable_->setColumnWidth(3, 110);
     resultsTable_->setStyleSheet(tableItemStyleSheet(t));
     root->addWidget(resultsTable_, 1);
 
@@ -370,9 +441,27 @@ class YouTubeSearchDialog : public QDialog {
  private:
   template <typename Fn>
   auto runWithLoading(const QString& msg, Fn&& fn) -> decltype(fn()) {
+    using R = decltype(fn());
+    // Reentrancy guard: if anything is already running, refuse the call.
+    if (inFlight_.exchange(true)) {
+      return R{};
+    }
     setBusy(true);
     loadingTick_ = 0;
-    auto future = std::async(std::launch::async, std::forward<Fn>(fn));
+
+    // Capture the work in a packaged_task that swallows exceptions so a
+    // failing yt-dlp / QProcess never tears down the future thread.
+    auto safeWork = [fn = std::forward<Fn>(fn)]() mutable -> R {
+      try { return fn(); }
+      catch (...) { return R{}; }
+    };
+
+    auto future = std::async(std::launch::async, std::move(safeWork));
+
+    // While the future runs, pump only paint / timer events — NEVER user
+    // input. That prevents the user from clicking Preview/Download again
+    // and starting a second concurrent operation (which previously could
+    // crash the dashboard process).
     while (future.wait_for(std::chrono::milliseconds(80)) != std::future_status::ready) {
       if (progressBar_->isVisible()) {
         const int pct = downloadProgress_.load();
@@ -400,10 +489,14 @@ class YouTubeSearchDialog : public QDialog {
       } else {
         updateLoadingMessage(msg);
       }
+      // Pump all events so the Cancel button stays responsive. Any other
+      // operation entry point is gated by the inFlight_ atomic above and
+      // will simply no-op while a future is running.
       QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
     }
     auto result = future.get();
     setBusy(false);
+    inFlight_.store(false);
     return result;
   }
 
@@ -475,20 +568,82 @@ class YouTubeSearchDialog : public QDialog {
       auto* actionHost   = new QWidget(resultsTable_);
       actionHost->setStyleSheet(QStringLiteral("background: transparent;"));
       auto* actionLayout = new QHBoxLayout(actionHost);
-      actionLayout->setContentsMargins(6, 4, 6, 4);
+      actionLayout->setContentsMargins(4, 0, 4, 0);
       actionLayout->setSpacing(6);
+      actionLayout->setAlignment(Qt::AlignCenter);
 
-      auto* previewButton     = new QPushButton(QStringLiteral("Preview"),  actionHost);
-      auto* downloadRowButton = new QPushButton(QStringLiteral("Download"), actionHost);
+      // Hand-drawn play triangle (preview).
+      auto makePlayIcon = [](int size, QColor fg) {
+        QPixmap pm(size, size);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setPen(Qt::NoPen);
+        p.setBrush(fg);
+        // Equilateral-ish triangle, slightly inset and nudged right so it
+        // looks visually centered (triangles have a heavier left edge).
+        const double inset = size * 0.26;
+        const double cx = size * 0.06;  // shift right
+        QPolygonF tri({
+          QPointF(inset + cx,            inset),
+          QPointF(inset + cx,            size - inset),
+          QPointF(size - inset + cx*0.5, size / 2.0)
+        });
+        p.drawPolygon(tri);
+        return QIcon(pm);
+      };
+
+      // Hand-drawn download icon (down arrow + tray).
+      auto makeDownloadIcon = [](int size, QColor fg) {
+        QPixmap pm(size, size);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        QPen pen(fg);
+        pen.setWidthF(size * 0.10);
+        pen.setCapStyle(Qt::RoundCap);
+        pen.setJoinStyle(Qt::RoundJoin);
+        p.setPen(pen);
+        // Vertical shaft
+        const double cx = size / 2.0;
+        const double topY = size * 0.20;
+        const double tipY = size * 0.62;
+        p.drawLine(QPointF(cx, topY), QPointF(cx, tipY));
+        // Arrowhead
+        const double head = size * 0.22;
+        p.drawLine(QPointF(cx - head, tipY - head), QPointF(cx, tipY));
+        p.drawLine(QPointF(cx + head, tipY - head), QPointF(cx, tipY));
+        // Tray
+        const double trayY = size * 0.80;
+        const double trayInset = size * 0.18;
+        p.drawLine(QPointF(trayInset, trayY), QPointF(trayInset, trayY + size * 0.08));
+        p.drawLine(QPointF(size - trayInset, trayY), QPointF(size - trayInset, trayY + size * 0.08));
+        p.drawLine(QPointF(trayInset, trayY + size * 0.08),
+                   QPointF(size - trayInset, trayY + size * 0.08));
+        return QIcon(pm);
+      };
+
+      auto* previewButton     = new QPushButton(actionHost);
+      auto* downloadRowButton = new QPushButton(actionHost);
       previewButton->setCursor(Qt::PointingHandCursor);
       downloadRowButton->setCursor(Qt::PointingHandCursor);
-      previewButton->setStyleSheet(
-        QStringLiteral("QPushButton { padding: 5px 10px; border-radius: 6px; }")
-      );
-      downloadRowButton->setStyleSheet(
-        QStringLiteral("QPushButton { padding: 5px 10px; border-radius: 6px; background: %1; border-color: %2; font-weight: 600; }")
-          .arg(t.accentBg, t.accentBorder)
-      );
+      previewButton->setFixedSize(26, 26);
+      downloadRowButton->setFixedSize(26, 26);
+      previewButton->setIconSize(QSize(14, 14));
+      downloadRowButton->setIconSize(QSize(14, 14));
+      previewButton->setToolTip(QStringLiteral("Preview"));
+      downloadRowButton->setToolTip(QStringLiteral("Download"));
+      previewButton->setIcon(makePlayIcon(48, QColor(t.textPrimary)));
+      // Download button uses a strong, mode-independent blue so the white
+      // icon stays readable in both light and dark themes.
+      downloadRowButton->setIcon(makeDownloadIcon(48, QColor(Qt::white)));
+      previewButton->setStyleSheet(QStringLiteral(
+        "QPushButton { background: %1; border: 1px solid %2; border-radius: 13px; padding: 0; }"
+        "QPushButton:hover { background: %3; }")
+        .arg(t.buttonBg, t.buttonBorder, t.buttonHover));
+      downloadRowButton->setStyleSheet(QStringLiteral(
+        "QPushButton { background: #2563eb; border: 1px solid #1e40af; border-radius: 13px; padding: 0; }"
+        "QPushButton:hover { background: #1d4ed8; }"));
 
       connect(previewButton, &QPushButton::clicked, this, [this, result]() {
         if (!owner_->onYouTubePreview) {
@@ -514,7 +669,7 @@ class YouTubeSearchDialog : public QDialog {
       actionLayout->addWidget(downloadRowButton);
       actionLayout->addStretch(1);
       resultsTable_->setCellWidget(index, 3, actionHost);
-      resultsTable_->setRowHeight(index, 46);
+      resultsTable_->setRowHeight(index, 40);
     }
 
     if (resetSelection && resultsTable_->rowCount() > 0) resultsTable_->selectRow(0);
@@ -583,7 +738,31 @@ class YouTubeSearchDialog : public QDialog {
   int           currentLimit_   = 0;
   std::atomic<bool> cancelRequested_{false};
   std::atomic<int>  downloadProgress_{-1};
+  // Hard reentrancy guard. Set the moment a future is launched, cleared
+  // when it completes. Every entry point checks this before starting work.
+  std::atomic<bool> inFlight_{false};
   static constexpr int kPageSize = 12;
+
+ protected:
+  void closeEvent(QCloseEvent* event) override {
+    if (inFlight_.load()) {
+      // Don't let the dialog be destroyed while a future references our
+      // atomics — that would dangle the pointers we passed to yt-dlp glue.
+      // Signal cancel and pump the event loop until the future finishes.
+      cancelRequested_.store(true);
+      statusLabel_->setText(QStringLiteral("Cancelling, please wait..."));
+      const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(8);
+      while (inFlight_.load() && std::chrono::steady_clock::now() < deadline) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+      }
+      if (inFlight_.load()) {
+        // Refuse to close — better than a crash. User can retry.
+        event->ignore();
+        return;
+      }
+    }
+    QDialog::closeEvent(event);
+  }
 };
 
 class HotkeyInputDialog : public QDialog {
@@ -822,17 +1001,23 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   freesoundApiKey_ = new QLineEdit(freesoundWidget);
   freesoundApiKey_->setObjectName(QStringLiteral("freesoundApiKey"));
   freesoundApiKey_->setPlaceholderText(QStringLiteral("Freesound API key"));
+  freesoundApiKey_->setFixedWidth(200);
   freesoundRow->addWidget(fsIconLabel);
   freesoundRow->addWidget(freesoundApiKey_);
-  topBar->addWidget(freesoundWidget, 1);
+  // Stretch goes to a spacer, NOT to the freesound field, so the dark mode
+  // toggle stays visible and tight on the right edge.
+  topBar->addWidget(freesoundWidget);
+  topBar->addStretch(1);
 
   // Dark mode toggle (top-right)
   darkModeButton_ = new QToolButton(topBarFrame);
   darkModeButton_->setObjectName(QStringLiteral("darkModeButton"));
   darkModeButton_->setCheckable(true);
   darkModeButton_->setToolTip(QStringLiteral("Toggle dark / light mode"));
-  darkModeButton_->setText(QStringLiteral("🌙"));
-  darkModeButton_->setFixedSize(36, 36);
+  darkModeButton_->setIcon(makeMoonIcon(24));
+  darkModeButton_->setIconSize(QSize(24, 24));
+  darkModeButton_->setFixedSize(38, 38);
+  darkModeButton_->setCursor(Qt::PointingHandCursor);
   topBar->addWidget(darkModeButton_);
 
   root->addWidget(topBarFrame);
@@ -1062,7 +1247,7 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   // ── Connections ──────────────────────────────────────────────────────────
   connect(darkModeButton_, &QToolButton::toggled, this, [this](bool on) {
     darkMode_ = on;
-    darkModeButton_->setText(on ? QStringLiteral("☀️") : QStringLiteral("🌙"));
+    darkModeButton_->setIcon(on ? makeSunIcon(24) : makeMoonIcon(24));
     applyTheme();
   });
 
@@ -1487,6 +1672,8 @@ void MainWindow::openCreateBoardDialog() {
 
 void MainWindow::rebuild() {
   rebuildingUi_ = true;
+  const WidgetUpdatesBlocker gridUpdates(gridHost_);
+  const WidgetUpdatesBlocker libraryUpdates(libraryList_);
   const QSignalBlocker b0(boardSelector_),    b1(volumeRemoteSlider_),
                        b2(volumeLocalSlider_), b3(muteOnClientCheckbox_),
                        b4(muteMyselfDuringPlaybackCheckbox_),
@@ -1519,6 +1706,11 @@ void MainWindow::rebuild() {
   }
   pageButtons_.clear();
   const Theme t = darkMode_ ? darkTheme() : lightTheme();
+  QHash<QString, QString> soundNamesById;
+  soundNamesById.reserve(state_.library.size());
+  for (const SoundRecord& sound : state_.library) {
+    soundNamesById.insert(sound.soundId, sound.displayName);
+  }
 
   auto* pageLabel = new QLabel(QStringLiteral("Page"), boardNavFrame_);
   pageLabel->setObjectName(QStringLiteral("pageLabel"));
@@ -1589,6 +1781,7 @@ void MainWindow::rebuild() {
   gridHost_->setMinimumSize(0, 0);
 
   if (board) {
+    cellCards_.reserve(board->cells.size());
     const int safeCols = qMax(1, board->cols);
     const int safeRows = qMax(1, board->rows);
     const int density = qMax(safeRows, safeCols);
@@ -1620,12 +1813,7 @@ void MainWindow::rebuild() {
       QString emoji = board->cells[index].icon;
       if (!board->cells[index].soundId.isEmpty()) {
         soundId = board->cells[index].soundId;
-        for (const SoundRecord& sound : state_.library) {
-          if (sound.soundId == soundId) {
-            label = sound.displayName;
-            break;
-          }
-        }
+        label = soundNamesById.value(soundId, label);
       }
       if (emoji.isEmpty()) {
         emoji = soundId.isEmpty() ? QStringLiteral("+") : emojiFromUtf8("\xF0\x9F\x94\x8A");
@@ -1752,49 +1940,56 @@ void MainWindow::rebuild() {
   }
 
   // Build filtered + sorted view of the library
-  QVector<const SoundRecord*> libraryView;
+  struct LibraryViewItem {
+    const SoundRecord* sound = nullptr;
+    QString displayNameLower;
+  };
+
+  QVector<LibraryViewItem> libraryView;
+  libraryView.reserve(state_.library.size());
   {
     const QString filter = librarySearch_ ? librarySearch_->text().trimmed().toLower() : QString{};
     for (const SoundRecord& s : state_.library) {
-      if (!filter.isEmpty() && !s.displayName.toLower().contains(filter))
+      const QString displayNameLower = s.displayName.toLower();
+      if (!filter.isEmpty() && !displayNameLower.contains(filter))
         continue;
-      libraryView.append(&s);
+      libraryView.push_back({&s, displayNameLower});
     }
     const QString sortKey = librarySortCombo_ ? librarySortCombo_->currentData().toString() : QStringLiteral("az");
     if (sortKey == QLatin1String("az")) {
-      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
-        return a->displayName.toLower() < b->displayName.toLower();
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const LibraryViewItem& a, const LibraryViewItem& b) {
+        return a.displayNameLower < b.displayNameLower;
       });
     } else if (sortKey == QLatin1String("za")) {
-      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
-        return a->displayName.toLower() > b->displayName.toLower();
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const LibraryViewItem& a, const LibraryViewItem& b) {
+        return a.displayNameLower > b.displayNameLower;
       });
     } else if (sortKey == QLatin1String("newest")) {
-      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
-        return a->createdAt > b->createdAt;
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const LibraryViewItem& a, const LibraryViewItem& b) {
+        return a.sound->createdAt > b.sound->createdAt;
       });
     } else if (sortKey == QLatin1String("oldest")) {
-      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
-        return a->createdAt < b->createdAt;
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const LibraryViewItem& a, const LibraryViewItem& b) {
+        return a.sound->createdAt < b.sound->createdAt;
       });
     } else if (sortKey == QLatin1String("mostplayed")) {
-      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
-        return a->playCount > b->playCount;
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const LibraryViewItem& a, const LibraryViewItem& b) {
+        return a.sound->playCount > b.sound->playCount;
       });
     } else if (sortKey == QLatin1String("duration_asc")) {
-      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
-        return a->durationMs < b->durationMs;
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const LibraryViewItem& a, const LibraryViewItem& b) {
+        return a.sound->durationMs < b.sound->durationMs;
       });
     } else if (sortKey == QLatin1String("duration_desc")) {
-      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
-        return a->durationMs > b->durationMs;
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const LibraryViewItem& a, const LibraryViewItem& b) {
+        return a.sound->durationMs > b.sound->durationMs;
       });
     }
   }
 
   libraryList_->clear();
-  for (const SoundRecord* soundPtr : libraryView) {
-    const SoundRecord& sound = *soundPtr;
+  for (const LibraryViewItem& viewItem : libraryView) {
+    const SoundRecord& sound = *viewItem.sound;
     auto* item = new QListWidgetItem();
     item->setData(Qt::UserRole, sound.soundId);
     item->setData(Qt::UserRole + 1, sound.displayName);
