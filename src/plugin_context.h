@@ -139,6 +139,15 @@ class PluginContext {
       window_->onCellHotkeyChanged = [this](int cellIndex, const QString& hotkey) {
         setCellHotkey(cellIndex, hotkey);
       };
+      window_->onDeleteBoard = [this](const QString& boardId) {
+        deleteBoard(boardId);
+      };
+      window_->onRenameBoard = [this](const QString& boardId, const QString& newName) {
+        renameBoard(boardId, newName);
+      };
+      window_->onDeleteSound = [this](const QString& soundId) {
+        deleteSound(soundId);
+      };
     }
 
     refreshWindow();
@@ -151,6 +160,13 @@ class PluginContext {
     if (window_) {
       window_->setState(state_);
     }
+  }
+
+  // Reread library/boards/config from disk. Used by the runtime so it sees
+  // changes made by the external UI process between hotkey presses.
+  void reloadState() {
+    state_ = storage_.loadState();
+    applyRuntimeConfig();
   }
 
   QVector<HotkeyBinding> hotkeys() const {
@@ -391,6 +407,46 @@ class PluginContext {
         refreshWindow();
         return;
       }
+    }
+  }
+
+  void deleteBoard(const QString& boardId) {
+    if (state_.boards.size() <= 1) return;
+    int idx = -1;
+    for (int i = 0; i < state_.boards.size(); ++i) {
+      if (state_.boards[i].id == boardId) { idx = i; break; }
+    }
+    if (idx < 0) return;
+    state_.boards.removeAt(idx);
+    if (state_.activeBoardId == boardId) {
+      state_.activeBoardId = state_.boards.front().id;
+    }
+    storage_.saveState(state_);
+    refreshWindow();
+  }
+
+  void renameBoard(const QString& boardId, const QString& newName) {
+    for (BoardRecord& board : state_.boards) {
+      if (board.id == boardId) {
+        board.name = newName;
+        storage_.saveState(state_);
+        refreshWindow();
+        return;
+      }
+    }
+  }
+
+  void deleteSound(const QString& soundId) {
+    if (storage_.deleteSound(soundId, state_)) {
+      // Also clear any cells referencing this sound across boards.
+      for (BoardRecord& board : state_.boards) {
+        for (Cell& cell : board.cells) {
+          if (cell.soundId == soundId) cell.soundId.clear();
+        }
+        board.unassignedSoundIds.removeAll(soundId);
+      }
+      storage_.saveState(state_);
+      refreshWindow();
     }
   }
 

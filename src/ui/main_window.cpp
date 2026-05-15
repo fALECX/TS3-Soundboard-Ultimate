@@ -1,8 +1,10 @@
 #include "src/ui/main_window.h"
 #include "src/ui/emoji_picker.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <future>
 
 #include <QApplication>
@@ -19,6 +21,7 @@
 #include <QIcon>
 #include <QInputDialog>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QKeySequence>
 #include <QShowEvent>
 #include <QLabel>
@@ -27,7 +30,13 @@
 #include <QListWidgetItem>
 #include <QMessageBox>
 #include <QMenu>
+#include <QEasingCurve>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPixmap>
+#include <QPropertyAnimation>
+#include <QScrollBar>
+#include <QWheelEvent>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
@@ -43,6 +52,49 @@
 #include <QVBoxLayout>
 
 namespace rpsu {
+
+// ---------------------------------------------------------------------------
+// Smooth-scroll filter: intercepts wheel events on a scrollable widget and
+// animates the vertical scrollbar with an ease-out curve so scrolling glides
+// to a stop rather than snapping. Subsequent wheel ticks chain onto the
+// already-in-flight animation for a momentum feel.
+// ---------------------------------------------------------------------------
+
+class SmoothScrollFilter : public QObject {
+ public:
+  explicit SmoothScrollFilter(QAbstractScrollArea* target)
+      : QObject(target), target_(target) {
+    anim_ = new QPropertyAnimation(target->verticalScrollBar(), "value", this);
+    anim_->setDuration(280);
+    anim_->setEasingCurve(QEasingCurve::OutCubic);
+    target->viewport()->installEventFilter(this);
+  }
+
+ protected:
+  bool eventFilter(QObject* obj, QEvent* ev) override {
+    if (ev->type() != QEvent::Wheel) return QObject::eventFilter(obj, ev);
+    auto* we = static_cast<QWheelEvent*>(ev);
+    auto* bar = target_->verticalScrollBar();
+    // Use angleDelta().y() — positive = scroll up. 120 units per "notch".
+    const int delta = we->angleDelta().y();
+    if (delta == 0) return false;
+    // ~3 lines per notch, scaled by viewport step.
+    const int step = qMax(40, bar->singleStep() * 3);
+    const int magnitude = (delta * step) / 120;
+    const int startVal = (anim_->state() == QAbstractAnimation::Running)
+                         ? anim_->endValue().toInt() : bar->value();
+    const int target = qBound(bar->minimum(), startVal - magnitude, bar->maximum());
+    anim_->stop();
+    anim_->setStartValue(bar->value());
+    anim_->setEndValue(target);
+    anim_->start();
+    return true;  // consume — we drive the scroll ourselves
+  }
+
+ private:
+  QAbstractScrollArea* target_ = nullptr;
+  QPropertyAnimation* anim_ = nullptr;
+};
 
 // ---------------------------------------------------------------------------
 // Theme palettes
@@ -158,6 +210,16 @@ static QString tableItemStyleSheet(const Theme& t) {
 
 namespace {
 
+class LambdaEventFilter : public QObject {
+ public:
+  using Handler = std::function<bool(QObject*, QEvent*)>;
+  explicit LambdaEventFilter(Handler h, QObject* parent = nullptr)
+      : QObject(parent), handler_(std::move(h)) {}
+  bool eventFilter(QObject* obj, QEvent* ev) override { return handler_(obj, ev); }
+ private:
+  Handler handler_;
+};
+
 QString formatDuration(int seconds) {
   if (seconds <= 0) return QStringLiteral("--:--");
   const int minutes   = seconds / 60;
@@ -178,15 +240,6 @@ QString emojiFromUtf8(const char* value) {
   return QString::fromUtf8(value);
 }
 
-QString compactCellLabel(const QString& value, int rows, int cols) {
-  const int density = qMax(rows, cols);
-  const int limit = density >= 10 ? 18 : (density >= 7 ? 28 : 44);
-  QString label = value.simplified();
-  if (label.size() <= limit) {
-    return label;
-  }
-  return label.left(qMax(1, limit - 3)).trimmed() + QStringLiteral("...");
-}
 
 class YouTubeSearchDialog : public QDialog {
  public:
@@ -726,6 +779,20 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   addBoardButton_->setToolTip(QStringLiteral("Create board"));
   addBoardButton_->setFixedSize(34, 34);
 
+  deleteBoardButton_ = new QToolButton(topBarFrame);
+  deleteBoardButton_->setObjectName(QStringLiteral("deleteBoardButton"));
+  deleteBoardButton_->setText(QStringLiteral("−"));  // minus sign
+  deleteBoardButton_->setToolTip(QStringLiteral("Delete current board"));
+  deleteBoardButton_->setFixedSize(34, 34);
+  deleteBoardButton_->setCursor(Qt::PointingHandCursor);
+
+  renameBoardButton_ = new QToolButton(topBarFrame);
+  renameBoardButton_->setObjectName(QStringLiteral("renameBoardButton"));
+  renameBoardButton_->setText(QStringLiteral("✎"));
+  renameBoardButton_->setToolTip(QStringLiteral("Rename current board"));
+  renameBoardButton_->setFixedSize(34, 34);
+  renameBoardButton_->setCursor(Qt::PointingHandCursor);
+
   importButton_ = new QPushButton(QStringLiteral("Import Sound"), topBarFrame);
   importButton_->setObjectName(QStringLiteral("importButton"));
   topBar->addWidget(importButton_);
@@ -861,9 +928,41 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   liveIndicator_->setVisible(false);
   previewLabel_ = new QLabel(QStringLiteral("Preview stopped"), previewBar_);
   previewLabel_->setObjectName(QStringLiteral("previewLabel"));
-  stopPreviewButton_ = new QPushButton(QStringLiteral("Stop Preview"), previewBar_);
+  // Hand-drawn stop icon (white rounded square inside a soft red circle).
+  // Renders crisp at any DPI; no external assets needed.
+  auto makeStopIcon = [](int size, bool enabled) {
+    QPixmap pm(size, size);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const QColor bg     = enabled ? QColor("#ef4444") : QColor(160, 160, 160, 80);
+    const QColor square = enabled ? QColor(Qt::white)  : QColor(255, 255, 255, 160);
+    // Background disc
+    p.setPen(Qt::NoPen);
+    p.setBrush(bg);
+    p.drawEllipse(QRectF(0.5, 0.5, size - 1.0, size - 1.0));
+    // Rounded stop square, ~38% of icon size, centered
+    const double s = size * 0.38;
+    const double x = (size - s) / 2.0;
+    p.setBrush(square);
+    QPainterPath path;
+    path.addRoundedRect(QRectF(x, x, s, s), s * 0.18, s * 0.18);
+    p.drawPath(path);
+    return QIcon(pm);
+  };
+
+  stopPreviewButton_ = new QPushButton(previewBar_);
   stopPreviewButton_->setObjectName(QStringLiteral("stopPreviewButton"));
   stopPreviewButton_->setEnabled(false);
+  stopPreviewButton_->setFixedSize(32, 32);
+  stopPreviewButton_->setIconSize(QSize(28, 28));
+  stopPreviewButton_->setCursor(Qt::PointingHandCursor);
+  stopPreviewButton_->setToolTip(QStringLiteral("Stop preview"));
+  stopPreviewButton_->setFlat(true);
+  // Store both states so setPreviewStatus() can swap without re-drawing.
+  stopPreviewButton_->setProperty("iconEnabled",  QVariant::fromValue(makeStopIcon(64, true)));
+  stopPreviewButton_->setProperty("iconDisabled", QVariant::fromValue(makeStopIcon(64, false)));
+  stopPreviewButton_->setIcon(stopPreviewButton_->property("iconDisabled").value<QIcon>());
   previewLayout->addWidget(liveIndicator_);
   previewLayout->addSpacing(8);
   previewLayout->addWidget(previewLabel_, 1);
@@ -909,13 +1008,50 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   pagerLayout_->setSpacing(6);
   leftPaneLayout->addWidget(pagerFrame_);
 
-  libraryList_  = new QListWidget(contentWidget);
+  // Library panel: toolbar + list
+  auto* libraryPanel = new QWidget(contentWidget);
+  libraryPanel->setMinimumWidth(200);
+  auto* libraryPanelLayout = new QVBoxLayout(libraryPanel);
+  libraryPanelLayout->setContentsMargins(0, 0, 0, 0);
+  libraryPanelLayout->setSpacing(4);
+
+  auto* libraryToolbar = new QWidget(libraryPanel);
+  auto* libraryToolbarLayout = new QVBoxLayout(libraryToolbar);
+  libraryToolbarLayout->setContentsMargins(0, 0, 0, 0);
+  libraryToolbarLayout->setSpacing(4);
+
+  librarySearch_ = new QLineEdit(libraryToolbar);
+  librarySearch_->setObjectName(QStringLiteral("librarySearch"));
+  librarySearch_->setPlaceholderText(QStringLiteral("Search sounds..."));
+  librarySearch_->setClearButtonEnabled(true);
+
+  librarySortCombo_ = new QComboBox(libraryToolbar);
+  librarySortCombo_->setObjectName(QStringLiteral("librarySortCombo"));
+  librarySortCombo_->addItem(QStringLiteral("A → Z"),         QStringLiteral("az"));
+  librarySortCombo_->addItem(QStringLiteral("Z → A"),         QStringLiteral("za"));
+  librarySortCombo_->addItem(QStringLiteral("Newest first"),  QStringLiteral("newest"));
+  librarySortCombo_->addItem(QStringLiteral("Oldest first"),  QStringLiteral("oldest"));
+  librarySortCombo_->addItem(QStringLiteral("Most played"),   QStringLiteral("mostplayed"));
+  librarySortCombo_->addItem(QStringLiteral("Duration ↑"),    QStringLiteral("duration_asc"));
+  librarySortCombo_->addItem(QStringLiteral("Duration ↓"),    QStringLiteral("duration_desc"));
+
+  libraryToolbarLayout->addWidget(librarySearch_);
+  libraryToolbarLayout->addWidget(librarySortCombo_);
+
+  libraryList_  = new QListWidget(libraryPanel);
   libraryList_->setObjectName(QStringLiteral("libraryList"));
-  libraryList_->setMinimumWidth(180);
   libraryList_->setSpacing(4);
   libraryList_->setContextMenuPolicy(Qt::CustomContextMenu);
+  // Smooth animated wheel-scrolling for the sound library.
+  libraryList_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+  libraryList_->verticalScrollBar()->setSingleStep(20);
+  new SmoothScrollFilter(libraryList_);
+
+  libraryPanelLayout->addWidget(libraryToolbar);
+  libraryPanelLayout->addWidget(libraryList_, 1);
+
   body->addWidget(leftPane, 2);
-  body->addWidget(libraryList_, 1);
+  body->addWidget(libraryPanel, 1);
   contentLayout->addLayout(body, 1);
 
   root->addWidget(contentWidget, 1);
@@ -946,6 +1082,36 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
     openCreateBoardDialog();
   });
 
+  connect(deleteBoardButton_, &QToolButton::clicked, this, [this]() {
+    if (state_.boards.size() <= 1) {
+      QMessageBox::information(this, QStringLiteral("Delete board"),
+        QStringLiteral("You can't delete the last remaining board."));
+      return;
+    }
+    const BoardRecord* board = activeBoard();
+    if (!board) return;
+    const QString boardId = board->id;
+    const QString boardName = board->name;
+    const auto reply = QMessageBox::question(this, QStringLiteral("Delete board"),
+      QStringLiteral("Delete board \"%1\"? This cannot be undone.").arg(boardName),
+      QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (reply == QMessageBox::Yes && onDeleteBoard) {
+      onDeleteBoard(boardId);
+    }
+  });
+
+  connect(renameBoardButton_, &QToolButton::clicked, this, [this]() {
+    const BoardRecord* board = activeBoard();
+    if (!board) return;
+    bool ok = false;
+    const QString newName = QInputDialog::getText(
+      this, QStringLiteral("Rename board"), QStringLiteral("New board name:"),
+      QLineEdit::Normal, board->name, &ok).trimmed();
+    if (ok && !newName.isEmpty() && newName != board->name && onRenameBoard) {
+      onRenameBoard(board->id, newName);
+    }
+  });
+
   connect(importButton_, &QPushButton::clicked, this, [this]() {
     if (onImportSound) onImportSound(selectedCellIndex_);
   });
@@ -972,6 +1138,9 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
     if (onPlaySound) onPlaySound(sid);
   });
 
+  connect(librarySearch_, &QLineEdit::textChanged, this, [this]() { rebuild(); });
+  connect(librarySortCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() { rebuild(); });
+
   connect(libraryList_, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
     auto* item = libraryList_->itemAt(pos);
     if (!item) {
@@ -983,9 +1152,25 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
       return;
     }
 
+    // Look up display name for the confirmation prompt.
+    QString displayName;
+    for (const SoundRecord& s : state_.library) {
+      if (s.soundId == soundId) { displayName = s.displayName; break; }
+    }
+
     QMenu contextMenu;
     contextMenu.addAction(QStringLiteral("Rename..."), this, [this, soundId]() {
       showRenameDialog(soundId);
+    });
+    contextMenu.addSeparator();
+    contextMenu.addAction(QStringLiteral("Delete sound"), this, [this, soundId, displayName]() {
+      const auto reply = QMessageBox::question(this, QStringLiteral("Delete sound"),
+        QStringLiteral("Delete \"%1\"? The audio file will be removed. This cannot be undone.")
+          .arg(displayName.isEmpty() ? soundId : displayName),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+      if (reply == QMessageBox::Yes && onDeleteSound) {
+        onDeleteSound(soundId);
+      }
     });
     contextMenu.exec(libraryList_->viewport()->mapToGlobal(pos));
   });
@@ -1076,6 +1261,8 @@ void MainWindow::applyTheme() {
 
     "#previewBar { background: %17; border: 1px solid %18; border-radius: 10px; }"
     "#previewLabel { color: %7; font-size: 12px; }"
+    "#stopPreviewButton { background: transparent; border: none; padding: 0px; }"
+    "#stopPreviewButton:hover:enabled { background: rgba(239,68,68,0.12); border-radius: 16px; }"
 
     "#gridScrollArea { background: transparent; border: none; }"
     "#gridHost { background: transparent; }"
@@ -1086,6 +1273,8 @@ void MainWindow::applyTheme() {
     "#cellDeleteButton { min-width: 18px; max-width: 18px; min-height: 18px; max-height: 18px; padding: 0px; border-radius: 9px; background: transparent; }"
     "#cellDeleteButton:hover { background: %10; }"
 
+    "#librarySearch { background: %15; border: 1px solid %4; border-radius: 6px; color: %2; padding: 4px 8px; }"
+    "#librarySortCombo { background: %9; border: 1px solid %8; border-radius: 6px; color: %2; padding: 2px 4px; }"
     "#libraryList { background: %3; border: 1px solid %4; border-radius: 10px; color: %2; }"
     "#libraryList::item { padding: 2px; border-radius: 8px; }"
     "#libraryList::item:selected { background: %13; }"
@@ -1151,12 +1340,14 @@ void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool pla
   if (!playing || title.trimmed().isEmpty()) {
     previewLabel_->setText(QStringLiteral("Preview stopped"));
     stopPreviewButton_->setEnabled(false);
+    stopPreviewButton_->setIcon(stopPreviewButton_->property("iconDisabled").value<QIcon>());
     liveIndicator_->setVisible(false);
     return;
   }
   previewLabel_->setText(
     QStringLiteral("Playing: %1  [%2]").arg(title, formatDurationMs(durationMs))
   );
+  stopPreviewButton_->setIcon(stopPreviewButton_->property("iconEnabled").value<QIcon>());
   stopPreviewButton_->setEnabled(true);
   liveIndicator_->setVisible(true);
 }
@@ -1314,7 +1505,8 @@ void MainWindow::rebuild() {
 
   while (QLayoutItem* item = boardNavLayout_->takeAt(0)) {
     QWidget* widget = item->widget();
-    if (widget && widget != boardSelector_ && widget != addBoardButton_) {
+    if (widget && widget != boardSelector_ && widget != addBoardButton_ &&
+        widget != deleteBoardButton_ && widget != renameBoardButton_) {
       item->widget()->deleteLater();
     }
     delete item;
@@ -1332,7 +1524,11 @@ void MainWindow::rebuild() {
   pageLabel->setObjectName(QStringLiteral("pageLabel"));
   boardNavLayout_->addWidget(pageLabel);
   boardNavLayout_->addWidget(boardSelector_, 1);
+  boardNavLayout_->addWidget(renameBoardButton_);
   boardNavLayout_->addWidget(addBoardButton_);
+  boardNavLayout_->addWidget(deleteBoardButton_);
+  // Disable delete when only one board remains.
+  deleteBoardButton_->setEnabled(state_.boards.size() > 1);
   boardNavLayout_->addStretch(1);
 
   auto* pagerLabel = new QLabel(QStringLiteral("Pages"), pagerFrame_);
@@ -1468,17 +1664,17 @@ void MainWindow::rebuild() {
       headerLayout->addWidget(deleteButton, 0, Qt::AlignRight);
       cellLayout->addLayout(headerLayout);
 
-      const QString buttonText = compactCellLabel(buildCellButtonLabel(board->cells[index], label), safeRows, safeCols);
-      auto* button = new QPushButton(buttonText, cellWidget);
+      auto* button = new QLabel(buildCellButtonLabel(board->cells[index], label), cellWidget);
       button->setObjectName(QStringLiteral("cellButton"));
-      button->setFlat(true);
       button->setCursor(Qt::PointingHandCursor);
-      button->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
+      button->setWordWrap(true);
+      button->setAlignment(Qt::AlignCenter);
+      button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
       button->setMinimumHeight(qMax(24, minCellHeight - emojiSize - (cellMargin * 2) - 10));
       button->setToolTip(label);
       button->setContextMenuPolicy(Qt::CustomContextMenu);
       button->setStyleSheet(QStringLiteral(
-        "#cellButton { background: transparent; border: none; color: %1; font-size: %2px; font-weight: 600; text-align: center; }"
+        "#cellButton { background: transparent; color: %1; font-size: %2px; font-weight: 600; }"
       ).arg(t.textPrimary, QString::number(density >= 10 ? 10 : 12)));
       cellLayout->addWidget(button, 1);
 
@@ -1493,7 +1689,7 @@ void MainWindow::rebuild() {
         }
       });
 
-      connect(button, &QWidget::customContextMenuRequested, this, [this, currentSoundId, index](const QPoint&) {
+      auto showContextMenu = [this, currentSoundId, index]() {
         QMenu contextMenu;
         contextMenu.addAction(QStringLiteral("Change Tile Emoji..."), this, [this, index]() {
           const BoardRecord* active = activeBoard();
@@ -1527,11 +1723,24 @@ void MainWindow::rebuild() {
           });
         }
         contextMenu.exec(QCursor::pos());
-      });
+      };
 
-      connect(button, &QPushButton::clicked, this, [this, index, soundId]() {
-        handleCellClick(index, soundId);
-      });
+      auto* buttonFilter = new LambdaEventFilter(
+        [this, index, soundId, showContextMenu](QObject*, QEvent* ev) -> bool {
+          if (ev->type() == QEvent::MouseButtonPress) {
+            auto* me = static_cast<QMouseEvent*>(ev);
+            if (me->button() == Qt::LeftButton) {
+              handleCellClick(index, soundId);
+              return true;
+            }
+            if (me->button() == Qt::RightButton) {
+              showContextMenu();
+              return true;
+            }
+          }
+          return false;
+        }, button);
+      button->installEventFilter(buttonFilter);
 
       connect(deleteButton, &QPushButton::clicked, this, [this, index]() {
         if (onAssignSoundToCell) {
@@ -1542,8 +1751,50 @@ void MainWindow::rebuild() {
     }
   }
 
+  // Build filtered + sorted view of the library
+  QVector<const SoundRecord*> libraryView;
+  {
+    const QString filter = librarySearch_ ? librarySearch_->text().trimmed().toLower() : QString{};
+    for (const SoundRecord& s : state_.library) {
+      if (!filter.isEmpty() && !s.displayName.toLower().contains(filter))
+        continue;
+      libraryView.append(&s);
+    }
+    const QString sortKey = librarySortCombo_ ? librarySortCombo_->currentData().toString() : QStringLiteral("az");
+    if (sortKey == QLatin1String("az")) {
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
+        return a->displayName.toLower() < b->displayName.toLower();
+      });
+    } else if (sortKey == QLatin1String("za")) {
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
+        return a->displayName.toLower() > b->displayName.toLower();
+      });
+    } else if (sortKey == QLatin1String("newest")) {
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
+        return a->createdAt > b->createdAt;
+      });
+    } else if (sortKey == QLatin1String("oldest")) {
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
+        return a->createdAt < b->createdAt;
+      });
+    } else if (sortKey == QLatin1String("mostplayed")) {
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
+        return a->playCount > b->playCount;
+      });
+    } else if (sortKey == QLatin1String("duration_asc")) {
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
+        return a->durationMs < b->durationMs;
+      });
+    } else if (sortKey == QLatin1String("duration_desc")) {
+      std::stable_sort(libraryView.begin(), libraryView.end(), [](const SoundRecord* a, const SoundRecord* b) {
+        return a->durationMs > b->durationMs;
+      });
+    }
+  }
+
   libraryList_->clear();
-  for (const SoundRecord& sound : state_.library) {
+  for (const SoundRecord* soundPtr : libraryView) {
+    const SoundRecord& sound = *soundPtr;
     auto* item = new QListWidgetItem();
     item->setData(Qt::UserRole, sound.soundId);
     item->setData(Qt::UserRole + 1, sound.displayName);

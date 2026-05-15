@@ -17,7 +17,7 @@
 struct TS3Functions ts3Functions;
 
 static const char* kFallbackName = "RP Soundboard Ultimate";
-static const char* kFallbackVersion = "0.2.0";
+static const char* kFallbackVersion = "0.3.0";
 static const char* kFallbackAuthor = "fALECX";
 static const char* kFallbackDescription = "Native TeamSpeak 3 soundboard plugin for RP Soundboard Ultimate.";
 static const char* kFallbackCommandKeyword = "rpsu";
@@ -183,20 +183,24 @@ static int load_runtime(void) {
     return 0;
   }
 
-  SetDllDirectoryW(dir);
-  append_debug_log("load_runtime: SetDllDirectoryW applied");
-
   if (swprintf(runtimeDir, MAX_PATH, L"%ls\\rp_soundboard_ultimate", dir) < 0) {
     append_debug_log("load_runtime: failed to build runtime directory");
     return 0;
   }
+
+  /* Set DLL search path to the support subdirectory so the runtime's Qt and
+     MinGW dependencies are found when LoadLibraryExW resolves imports. */
+  SetDllDirectoryW(runtimeDir);
+  append_debug_log("load_runtime: SetDllDirectoryW applied");
 
   if (swprintf(runtimePath, MAX_PATH, L"%ls\\rp_soundboard_ultimate_runtime.bin", runtimeDir) < 0) {
     append_debug_log("load_runtime: failed to build runtime path");
     return 0;
   }
 
-  g_runtime.module = LoadLibraryExW(runtimePath, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+  /* No LOAD_WITH_ALTERED_SEARCH_PATH: use standard search order so that
+     SetDllDirectoryW(runtimeDir) above is honoured for dependency resolution. */
+  g_runtime.module = LoadLibraryW(runtimePath);
   if (!g_runtime.module) {
     append_last_error("load_runtime: LoadLibraryExW failed");
     g_runtimeLoadState = -1;

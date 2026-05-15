@@ -13,7 +13,7 @@ else()
 endif()
 
 if(NOT packageVersion)
-    set(packageVersion "0.2.0")
+    set(packageVersion "0.3.0")
 endif()
 
 file(MAKE_DIRECTORY "${RPSU_PLUGINFILE_OUTPUT_DIR}")

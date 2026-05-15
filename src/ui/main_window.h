@@ -10,6 +10,7 @@
 
 class QComboBox;
 class QCheckBox;
+class QVBoxLayout;
 class QHBoxLayout;
 class QGridLayout;
 class QLabel;
@@ -54,6 +55,9 @@ class MainWindow : public QWidget {
   std::function<void(int cellIndex, const QString& emoji)> onCellEmojiChanged;
   std::function<void(const QString& soundId, const QString& displayName)> onSoundRenamed;
   std::function<void(int cellIndex, const QString& hotkey)> onCellHotkeyChanged;
+  std::function<void(const QString& boardId)> onDeleteBoard;
+  std::function<void(const QString& boardId, const QString& newName)> onRenameBoard;
+  std::function<void(const QString& soundId)> onDeleteSound;
 
  private:
   void rebuild();
@@ -70,6 +74,8 @@ class MainWindow : public QWidget {
   AppState state_;
   QComboBox* boardSelector_ = nullptr;
   QToolButton* addBoardButton_ = nullptr;
+  QToolButton* deleteBoardButton_ = nullptr;
+  QToolButton* renameBoardButton_ = nullptr;
   QWidget* boardNavFrame_ = nullptr;
   QWidget* pagerFrame_ = nullptr;
   QScrollArea* gridScrollArea_ = nullptr;
@@ -78,6 +84,8 @@ class MainWindow : public QWidget {
   QHBoxLayout* pagerLayout_ = nullptr;
   QGridLayout* gridLayout_ = nullptr;
   QListWidget* libraryList_ = nullptr;
+  QLineEdit* librarySearch_ = nullptr;
+  QComboBox* librarySortCombo_ = nullptr;
   QLabel* statusLabel_ = nullptr;
   QFrame* previewBar_ = nullptr;
   QLabel* previewLabel_ = nullptr;
