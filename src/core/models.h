@@ -52,6 +52,7 @@ struct PluginConfig {
   int volumeRemote = 80;
   int volumeLocal = 80;
   bool playbackLocal = true;
+  bool darkMode = true;
   bool muteMyselfDuringPlayback = false;
   bool showHotkeysOnButtons = false;
   bool globalHotkeysEnabled = true;

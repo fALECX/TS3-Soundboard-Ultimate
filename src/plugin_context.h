@@ -92,6 +92,10 @@ class PluginContext {
         state_.config.freesoundApiKey = apiKey;
         storage_.saveState(state_);
       };
+      window_->onDarkModeChanged = [this](bool darkMode) {
+        state_.config.darkMode = darkMode;
+        storage_.saveState(state_);
+      };
       window_->onVolumeRemoteChanged = [this](int value) {
         state_.config.volumeRemote = qBound(0, value, 100);
         playbackEngine_.setVolumeRemote(state_.config.volumeRemote);

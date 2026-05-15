@@ -187,6 +187,7 @@ QJsonObject toJson(const PluginConfig& config) {
   object.insert(QStringLiteral("volumeRemote"), config.volumeRemote);
   object.insert(QStringLiteral("volumeLocal"), config.volumeLocal);
   object.insert(QStringLiteral("playbackLocal"), config.playbackLocal);
+  object.insert(QStringLiteral("darkMode"), config.darkMode);
   object.insert(QStringLiteral("muteMyselfDuringPlayback"), config.muteMyselfDuringPlayback);
   object.insert(QStringLiteral("showHotkeysOnButtons"), config.showHotkeysOnButtons);
   object.insert(QStringLiteral("globalHotkeysEnabled"), config.globalHotkeysEnabled);
@@ -258,6 +259,7 @@ PluginConfig configFromJson(const QJsonObject& object) {
   }
   config.volumeLocal = qBound(0, object.value(QStringLiteral("volumeLocal")).toInt(config.volumeRemote), 100);
   config.playbackLocal = object.value(QStringLiteral("playbackLocal")).toBool(true);
+  config.darkMode = object.value(QStringLiteral("darkMode")).toBool(true);
   config.muteMyselfDuringPlayback = object.value(QStringLiteral("muteMyselfDuringPlayback")).toBool(false);
   config.showHotkeysOnButtons = object.value(QStringLiteral("showHotkeysOnButtons")).toBool(false);
   config.globalHotkeysEnabled = object.value(QStringLiteral("globalHotkeysEnabled")).toBool(true);

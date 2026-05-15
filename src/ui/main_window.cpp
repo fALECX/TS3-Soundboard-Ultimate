@@ -1249,6 +1249,7 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
     darkMode_ = on;
     darkModeButton_->setIcon(on ? makeSunIcon(24) : makeMoonIcon(24));
     applyTheme();
+    if (onDarkModeChanged) onDarkModeChanged(on);
   });
 
   connect(brandButton, &QToolButton::clicked, this, []() {
@@ -1755,6 +1756,10 @@ void MainWindow::rebuild() {
   pagerLayout_->addStretch(1);
 
   freesoundApiKey_->setText(state_.config.freesoundApiKey);
+  darkMode_ = state_.config.darkMode;
+  darkModeButton_->setChecked(darkMode_);
+  darkModeButton_->setIcon(darkMode_ ? makeSunIcon(24) : makeMoonIcon(24));
+  applyTheme();
   volumeRemoteSlider_->setValue(state_.config.volumeRemote);
   volumeLocalSlider_->setValue(state_.config.volumeLocal);
   muteOnClientCheckbox_->setChecked(!state_.config.playbackLocal);

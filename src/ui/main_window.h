@@ -45,6 +45,7 @@ class MainWindow : public QWidget {
   std::function<bool(const YouTubeSearchResult& result, QString* errorMessage)> onYouTubePreview;
   std::function<QString(const YouTubeSearchResult& result, QString* errorMessage, std::atomic<bool>* cancelFlag, std::atomic<int>* progressPct)> onYouTubeDownload;
   std::function<void(const QString& apiKey)> onFreesoundApiKeyChanged;
+  std::function<void(bool darkMode)> onDarkModeChanged;
   std::function<void(int value)> onVolumeRemoteChanged;
   std::function<void(int value)> onVolumeLocalChanged;
   std::function<void(bool enabled)> onPlaybackLocalChanged;
@@ -106,7 +107,7 @@ class MainWindow : public QWidget {
   QFrame* settingsFrame_ = nullptr;
   int selectedCellIndex_ = -1;
   bool rebuildingUi_ = false;
-  bool darkMode_ = false;
+  bool darkMode_ = true;
   QVector<QWidget*> cellCards_;
   QVector<QPushButton*> pageButtons_;
 };
