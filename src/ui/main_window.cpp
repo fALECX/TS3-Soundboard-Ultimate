@@ -911,7 +911,7 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
 
   libraryList_  = new QListWidget(contentWidget);
   libraryList_->setObjectName(QStringLiteral("libraryList"));
-  libraryList_->setMinimumWidth(320);
+  libraryList_->setMinimumWidth(180);
   libraryList_->setSpacing(4);
   libraryList_->setContextMenuPolicy(Qt::CustomContextMenu);
   body->addWidget(leftPane, 2);
@@ -1551,30 +1551,31 @@ void MainWindow::rebuild() {
 
     auto* rowWidget = new QWidget(libraryList_);
     rowWidget->setStyleSheet(QStringLiteral("background: transparent;"));
-    auto* rowLayout = new QHBoxLayout(rowWidget);
-    rowLayout->setContentsMargins(10, 6, 10, 6);
-    rowLayout->setSpacing(8);
-
-    auto* textLayout = new QVBoxLayout();
-    textLayout->setContentsMargins(0, 0, 0, 0);
-    textLayout->setSpacing(2);
+    auto* rowLayout = new QVBoxLayout(rowWidget);
+    rowLayout->setContentsMargins(10, 5, 10, 5);
+    rowLayout->setSpacing(2);
 
     auto* titleLabel = new QLabel(sound.displayName, rowWidget);
-    titleLabel->setStyleSheet(QStringLiteral("font-weight: 600; color: %1;").arg(t.textPrimary));
+    titleLabel->setStyleSheet(QStringLiteral("font-weight: 600; font-size: 12px; color: %1;").arg(t.textPrimary));
     titleLabel->setToolTip(sound.displayName);
+    titleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+
+    auto* metaRow = new QHBoxLayout();
+    metaRow->setContentsMargins(0, 0, 0, 0);
+    metaRow->setSpacing(6);
 
     auto* metaLabel = new QLabel(libraryMetaLabel(sound), rowWidget);
-    metaLabel->setStyleSheet(QStringLiteral("font-size: 11px; color: %1;").arg(t.textMuted));
+    metaLabel->setStyleSheet(QStringLiteral("font-size: 10px; color: %1;").arg(t.textMuted));
 
     auto* durationLabel = new QLabel(formatDurationMs(sound.durationMs), rowWidget);
-    durationLabel->setMinimumWidth(46);
-    durationLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    durationLabel->setStyleSheet(QStringLiteral("font-weight: 700; color: %1;").arg(t.textMuted));
+    durationLabel->setStyleSheet(QStringLiteral("font-size: 10px; font-weight: 700; color: %1;").arg(t.textMuted));
 
-    textLayout->addWidget(titleLabel);
-    textLayout->addWidget(metaLabel);
-    rowLayout->addWidget(durationLabel, 0, Qt::AlignLeft | Qt::AlignVCenter);
-    rowLayout->addLayout(textLayout, 1);
+    metaRow->addWidget(metaLabel);
+    metaRow->addStretch(1);
+    metaRow->addWidget(durationLabel);
+
+    rowLayout->addWidget(titleLabel);
+    rowLayout->addLayout(metaRow);
 
     libraryList_->addItem(item);
     libraryList_->setItemWidget(item, rowWidget);
