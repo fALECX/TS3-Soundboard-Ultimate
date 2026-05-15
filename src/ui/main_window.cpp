@@ -1757,8 +1757,11 @@ void MainWindow::rebuild() {
 
   freesoundApiKey_->setText(state_.config.freesoundApiKey);
   darkMode_ = state_.config.darkMode;
-  darkModeButton_->setChecked(darkMode_);
-  darkModeButton_->setIcon(darkMode_ ? makeSunIcon(24) : makeMoonIcon(24));
+  {
+    QSignalBlocker blocker(darkModeButton_);
+    darkModeButton_->setChecked(darkMode_);
+    darkModeButton_->setIcon(darkMode_ ? makeSunIcon(24) : makeMoonIcon(24));
+  }
   applyTheme();
   volumeRemoteSlider_->setValue(state_.config.volumeRemote);
   volumeLocalSlider_->setValue(state_.config.volumeLocal);
