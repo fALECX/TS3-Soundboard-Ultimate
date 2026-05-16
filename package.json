@@ -5,9 +5,13 @@
   "description": "Native TeamSpeak 3 soundboard plugin for Windows.",
   "scripts": {
     "test": "node --test tests/release.test.js",
+    "test:pipeline": "npm test && npm run validate:release && npm run test:ts3:start",
+    "test:pipeline:start": "npm test && npm run validate:release && npm run test:ts3:start",
+    "test:ts3": "powershell -ExecutionPolicy Bypass -File scripts/test-teamspeak.ps1 -Build -StopTeamSpeak",
+    "test:ts3:start": "powershell -ExecutionPolicy Bypass -File scripts/test-teamspeak.ps1 -Build -StopTeamSpeak -StartTeamSpeak",
     "validate:release": "node scripts/validate-release.js",
-    "deploy:ts3": "powershell -ExecutionPolicy Bypass -File scripts/test-teamspeak.ps1 -Build -StopTeamSpeak",
-    "deploy:ts3:start": "powershell -ExecutionPolicy Bypass -File scripts/test-teamspeak.ps1 -Build -StopTeamSpeak -StartTeamSpeak"
+    "deploy:ts3": "npm run test:ts3",
+    "deploy:ts3:start": "npm run test:ts3:start"
   },
   "author": "fALECX",
   "license": "MIT",

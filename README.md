@@ -105,10 +105,14 @@ npm run validate:release
 Full TeamSpeak smoke test:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/test-teamspeak.ps1 -Build -StopTeamSpeak -StartTeamSpeak -BuildDir .\build_msvc_qt5
+npm run test:pipeline:start
 ```
 
-The smoke test verifies deployment, TeamSpeak launch, plugin load, and whether the runtime initialized instead of falling back to safe mode.
+The full pipeline runs the repository checks, release validation, build/deploy, stops TeamSpeak first if it is open, launches TeamSpeak, and verifies whether the runtime initialized instead of falling back to safe mode. To target a specific build directory manually, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/test-teamspeak.ps1 -Build -StopTeamSpeak -StartTeamSpeak -BuildDir .\build_msvc_qt5
+```
 
 ## Runtime Data
 

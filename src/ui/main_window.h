@@ -24,6 +24,7 @@ class QSpinBox;
 class QTableWidget;
 class QFrame;
 class QToolButton;
+class QStackedWidget;
 
 namespace rpsu {
 
@@ -61,6 +62,16 @@ class MainWindow : public QWidget {
   std::function<void(const QString& boardId)> onDeleteBoard;
   std::function<void(const QString& boardId, const QString& newName)> onRenameBoard;
   std::function<void(const QString& soundId)> onDeleteSound;
+
+  // Voicemod tab callbacks. Implemented in plugin_context.cpp.
+  // Each returns a status string the UI shows next to the controls.
+  std::function<QString(const QString& dllPath)> onVoicemodLoadVst;
+  std::function<void()> onVoicemodUnloadVst;
+  std::function<void(bool enabled)> onVoicemodEnabledChanged;
+  std::function<void()> onVoicemodRandomizeParams;
+  std::function<QString()> onVoicemodQueryStatus;
+
+  void refreshVoicemodStatus();
 
  private:
   void rebuild();
@@ -115,6 +126,16 @@ class MainWindow : public QWidget {
   bool darkMode_ = false;
   QVector<QWidget*> cellCards_;
   QVector<QPushButton*> pageButtons_;
+
+  // Voicemod tab widgets
+  QToolButton* tabSoundboardButton_ = nullptr;
+  QToolButton* tabVoicemodsButton_ = nullptr;
+  QStackedWidget* tabStack_ = nullptr;
+  QLabel* voicemodStatusLabel_ = nullptr;
+  QPushButton* voicemodLoadButton_ = nullptr;
+  QPushButton* voicemodUnloadButton_ = nullptr;
+  QPushButton* voicemodRandomizeButton_ = nullptr;
+  QCheckBox* voicemodEnabledCheck_ = nullptr;
 };
 
 }  // namespace rpsu

@@ -1,5 +1,7 @@
 #include "src/engine/playback_engine.h"
 
+#include "src/voicemods/voicemod_manager.h"
+
 #include <QDir>
 #include <QFileInfo>
 
@@ -115,19 +117,24 @@ bool PlaybackEngine::mixCaptured(uint64 serverConnectionHandlerID, short* sample
 #else
   (void)serverConnectionHandlerID;
 #endif
+  // Apply voicemod effects to the raw microphone samples FIRST so other users
+  // hear our processed voice. Soundboard sounds are then mixed in on top with
+  // their own (untouched) audio path.
+  const bool voicemodApplied = VoicemodManager::instance().processCapture(samples, sampleCount, channels);
   const int written = sampler_.fetchInputSamples(samples, sampleCount, channels, nullptr);
 #ifdef RPSU_ENABLE_TS3_ROUTING
   static int captureLogBudget = 8;
-  if (captureLogBudget > 0 && written > 0) {
-    runtimeLog(QStringLiteral("mixCaptured wrote=%1 samples=%2 channels=%3 server=%4")
+  if (captureLogBudget > 0 && (written > 0 || voicemodApplied)) {
+    runtimeLog(QStringLiteral("mixCaptured wrote=%1 samples=%2 channels=%3 server=%4 voicemod=%5")
                    .arg(written)
                    .arg(sampleCount)
                    .arg(channels)
-                   .arg(serverConnectionHandlerID));
+                   .arg(serverConnectionHandlerID)
+                   .arg(voicemodApplied ? 1 : 0));
     --captureLogBudget;
   }
 #endif
-  return written > 0;
+  return voicemodApplied || written > 0;
 }
 
 void PlaybackEngine::mixPlayback(uint64 serverConnectionHandlerID, short* samples, int sampleCount, int channels, const unsigned int* channelSpeakerArray, unsigned int* channelFillMask) {

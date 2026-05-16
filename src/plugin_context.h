@@ -17,6 +17,7 @@
 #include "src/engine/playback_engine.h"
 #include "src/core/youtube_service.h"
 #include "src/ui/main_window.h"
+#include "src/voicemods/voicemod_manager.h"
 
 #ifdef RPSU_ENABLE_TS3_ROUTING
 #include "src/plugin.h"
@@ -149,6 +150,40 @@ class PluginContext {
       };
       window_->onDeleteSound = [this](const QString& soundId) {
         deleteSound(soundId);
+      };
+
+      // ── Voicemod tab wiring ────────────────────────────────────────────
+      window_->onVoicemodLoadVst = [](const QString& dllPath) -> QString {
+        QString err;
+        if (!VoicemodManager::instance().loadVst(dllPath, &err)) {
+          return err.isEmpty() ? QStringLiteral("Unknown VST load failure.") : err;
+        }
+        return QString();
+      };
+      window_->onVoicemodUnloadVst = []() {
+        VoicemodManager::instance().setEnabled(false);
+        VoicemodManager::instance().unloadVst();
+      };
+      window_->onVoicemodEnabledChanged = [](bool enabled) {
+        VoicemodManager::instance().setEnabled(enabled);
+      };
+      window_->onVoicemodRandomizeParams = []() {
+        VoicemodManager::instance().randomizeParameters();
+      };
+      window_->onVoicemodQueryStatus = []() -> QString {
+        auto& mgr = VoicemodManager::instance();
+        if (!mgr.isVstLoaded()) {
+          return QStringLiteral("No VST loaded.");
+        }
+        const QString name = mgr.currentVstName();
+        const QString vendor = mgr.currentVstVendor();
+        const int params = mgr.currentVstParamCount();
+        const bool enabled = mgr.isEnabled();
+        return QStringLiteral("Loaded: %1%2 — %3 parameter(s) — %4")
+            .arg(name.isEmpty() ? QStringLiteral("(unnamed)") : name,
+                 vendor.isEmpty() ? QString() : QStringLiteral(" by %1").arg(vendor))
+            .arg(params)
+            .arg(enabled ? QStringLiteral("ENABLED") : QStringLiteral("disabled"));
       };
     }
 
