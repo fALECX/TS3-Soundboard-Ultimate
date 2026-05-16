@@ -34,6 +34,9 @@ class PluginContext {
   }
 
   bool initialize() {
+#ifdef RPSU_ENABLE_TS3_ROUTING
+    QFile::remove(ipcFilePath());
+#endif
     state_ = storage_.loadState();
     playbackEngine_.onPreviewStatusChanged = [this](const QString& title, int durationMs, bool playing) {
       updatePreviewUi(title, durationMs, playing);
@@ -215,6 +218,9 @@ class PluginContext {
 #ifdef RPSU_ENABLE_TS3_ROUTING
       started = playbackEngine_.playSound(sound, storage_.soundsDir(), &error);
 #else
+      // Signal the runtime process (loaded in TS3) to inject audio through the mic.
+      writeIpcCommand(soundId);
+      // Also play locally through the speaker for immediate feedback.
       const QString filePath = QDir(storage_.soundsDir()).filePath(sound.filename);
       int previewDurationMs = 0;
       QString previewError;
@@ -264,6 +270,24 @@ class PluginContext {
   void talkStatusChanged(uint64 serverConnectionHandlerID, int status, int isReceivedWhisper, anyID clientID) {
     playbackEngine_.talkStatusChanged(serverConnectionHandlerID, status, isReceivedWhisper, clientID);
   }
+
+  // Called from the TS3 audio thread (throttled) to pick up play/stop requests
+  // written by the external UI process.
+  void checkPlaybackIpc() {
+    const QString path = ipcFilePath();
+    if (!QFile::exists(path)) return;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return;
+    const QString command = QString::fromUtf8(f.readAll()).trimmed();
+    f.close();
+    QFile::remove(path);
+    if (command == QStringLiteral("__STOP__")) {
+      playbackEngine_.stopPlayback();
+    } else if (!command.isEmpty()) {
+      reloadState();
+      playSound(command);
+    }
+  }
 #else
   void currentServerConnectionChanged(unsigned long long) {}
   void connectStatusChanged(unsigned long long, int) {}
@@ -292,6 +316,9 @@ class PluginContext {
   void stopPreview() {
     playbackEngine_.stopPlayback();
     preview_.stop();
+#ifndef RPSU_ENABLE_TS3_ROUTING
+    writeIpcCommand(QStringLiteral("__STOP__"));
+#endif
     if (previewClearTimer_) {
       previewClearTimer_->stop();
     }
@@ -558,6 +585,19 @@ class PluginContext {
       if (fi.lastModified() < cutoff && fi.absoluteFilePath() != lastPreviewPath_) {
         QFile::remove(fi.absoluteFilePath());
       }
+    }
+  }
+
+  // IPC file shared between the UI process (writer) and the TS3 runtime (reader).
+  // Content is either a soundId to play, or "__STOP__" to halt playback.
+  QString ipcFilePath() const {
+    return QDir(storage_.baseDir()).filePath(QStringLiteral("pending_play.txt"));
+  }
+
+  void writeIpcCommand(const QString& command) {
+    QFile f(ipcFilePath());
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+      f.write(command.toUtf8());
     }
   }
 

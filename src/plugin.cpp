@@ -237,7 +237,14 @@ void ts3plugin_onHotkeyEvent(const char* keyword) {
   rpsu::PluginContext::instance().playHotkey(QString::fromUtf8(keyword ? keyword : ""));
 }
 
+static int g_ipcPollCounter = 0;
+
 void ts3plugin_onEditCapturedVoiceDataEvent(uint64 serverConnectionHandlerID, short* samples, int sampleCount, int channels, int* edited) {
+  // Poll for UI-triggered play requests every ~10 audio frames (~100 ms at 10 ms/frame).
+  if (++g_ipcPollCounter >= 10) {
+    g_ipcPollCounter = 0;
+    rpsu::PluginContext::instance().checkPlaybackIpc();
+  }
   if (rpsu::PluginContext::instance().mixCaptured(serverConnectionHandlerID, samples, sampleCount, channels) && edited) {
     *edited |= 0x1;
   }
