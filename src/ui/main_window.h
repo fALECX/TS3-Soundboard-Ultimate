@@ -42,7 +42,6 @@ class MainWindow : public QWidget {
   std::function<void()> onStopPreview;
   std::function<void()> onPausePreview;
   std::function<void(int posMs)> onSeekPreview;
-  std::function<void(double speed)> onSpeedChanged;
   std::function<void(int cellIndex)> onImportSound;
   std::function<void(const QString& soundId, int cellIndex)> onAssignSoundToCell;
   std::function<QVector<YouTubeSearchResult>(const QString& query, int limit, QString* errorMessage)> onYouTubeSearch;
@@ -94,7 +93,6 @@ class MainWindow : public QWidget {
   QFrame* previewBar_ = nullptr;
   QLabel* previewLabel_ = nullptr;
   QLabel* liveIndicator_ = nullptr;
-  QPushButton* speedButton_ = nullptr;
   QPushButton* pausePreviewButton_ = nullptr;
   QPushButton* stopPreviewButton_ = nullptr;
   QSlider* progressSlider_ = nullptr;

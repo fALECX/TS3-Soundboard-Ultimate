@@ -9,7 +9,6 @@ class PreviewPlayer {
   ~PreviewPlayer();
 
   void setVolume(double volume);
-  void setPlaybackSpeed(double speed);
   bool playFile(const QString& soundId, const QString& path, int* durationMs, QString* errorMessage);
   void stop();
   bool pause();
@@ -25,7 +24,6 @@ class PreviewPlayer {
   QString currentSoundId_;
   int currentDurationMs_ = 0;
   double volume_ = 0.8;
-  double playbackSpeed_ = 1.0;
   bool paused_ = false;
 };
 

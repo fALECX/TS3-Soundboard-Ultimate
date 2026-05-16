@@ -43,13 +43,6 @@ void PreviewPlayer::setVolume(double volume) {
   }
 }
 
-void PreviewPlayer::setPlaybackSpeed(double speed) {
-  playbackSpeed_ = qBound(0.1, speed, 8.0);
-  if (!currentSoundId_.isEmpty()) {
-    sendMciCommand(QStringLiteral("set %1 speed %2").arg(alias_).arg(static_cast<int>(playbackSpeed_ * 1000.0)));
-  }
-}
-
 bool PreviewPlayer::playFile(const QString& soundId, const QString& path, int* durationMs, QString* errorMessage) {
   if (isPlaying(soundId)) {
     stop();
@@ -88,10 +81,6 @@ bool PreviewPlayer::playFile(const QString& soundId, const QString& path, int* d
       *errorMessage = QStringLiteral("Could not play the sound preview.");
     }
     return false;
-  }
-
-  if (playbackSpeed_ != 1.0) {
-    sendMciCommand(QStringLiteral("set %1 speed %2").arg(alias_).arg(static_cast<int>(playbackSpeed_ * 1000.0)));
   }
 
   currentSoundId_ = soundId;

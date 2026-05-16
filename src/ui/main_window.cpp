@@ -1200,19 +1200,9 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   stopPreviewButton_->setProperty("iconEnabled",  QVariant::fromValue(makeStopIcon(64, true)));
   stopPreviewButton_->setProperty("iconDisabled", QVariant::fromValue(makeStopIcon(64, false)));
   stopPreviewButton_->setIcon(stopPreviewButton_->property("iconDisabled").value<QIcon>());
-  speedButton_ = new QPushButton(QStringLiteral("1.0×"), previewBar_);
-  speedButton_->setObjectName(QStringLiteral("speedButton"));
-  speedButton_->setEnabled(false);
-  speedButton_->setFixedHeight(26);
-  speedButton_->setMinimumWidth(52);
-  speedButton_->setCursor(Qt::PointingHandCursor);
-  speedButton_->setToolTip(QStringLiteral("Playback speed — click to cycle"));
-  speedButton_->setProperty("speedIndex", 0);
-
   previewLayout->addWidget(liveIndicator_);
   previewLayout->addSpacing(8);
   previewLayout->addWidget(previewLabel_, 1);
-  previewLayout->addWidget(speedButton_);
   previewLayout->addWidget(pausePreviewButton_);
   previewLayout->addWidget(stopPreviewButton_);
 
@@ -1462,14 +1452,6 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   connect(colsSpin_, qOverload<int>(&QSpinBox::valueChanged), this, [this](int cols) {
     if (!rebuildingUi_ && onActiveBoardSizeChanged) onActiveBoardSizeChanged(rowsSpin_->value(), cols);
   });
-  connect(speedButton_, &QPushButton::clicked, this, [this]() {
-    static const double kSpeeds[] = {1.0, 1.25, 1.5, 2.0};
-    static const char* kLabels[]  = {"1.0×", "1.25×", "1.5×", "2.0×"};
-    const int idx = (speedButton_->property("speedIndex").toInt() + 1) % 4;
-    speedButton_->setProperty("speedIndex", idx);
-    speedButton_->setText(QLatin1String(kLabels[idx]));
-    if (onSpeedChanged) onSpeedChanged(kSpeeds[idx]);
-  });
   connect(progressSlider_, &QSlider::sliderPressed, this, [this]() {
     sliderDragging_ = true;
   });
@@ -1507,7 +1489,6 @@ void MainWindow::applyTheme() {
     "#youtubeButton { background: #e02020; border-color: #b31b1b; color: white; font-weight: 600; }"
     "#youtubeButton:hover { background: #c81a1a; }"
     "#importButton { font-weight: 600; }"
-    "#speedButton { padding: 2px 8px; font-size: 12px; font-weight: 600; }"
 
     "QToolButton { border: 1px solid %8; border-radius: 8px; padding: 5px 8px; background: %9; color: %2; }"
     "QToolButton:hover   { background: %10; }"
@@ -1617,7 +1598,6 @@ const BoardRecord* MainWindow::activeBoard() const {
 void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool playing, bool paused) {
   if (!playing || title.trimmed().isEmpty()) {
     previewLabel_->setText(QStringLiteral("Preview stopped"));
-    speedButton_->setEnabled(false);
     pausePreviewButton_->setEnabled(false);
     pausePreviewButton_->setIcon(pausePreviewButton_->property("iconDisabled").value<QIcon>());
     pausePreviewButton_->setToolTip(QStringLiteral("Pause preview"));
@@ -1641,7 +1621,6 @@ void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool pla
     pausePreviewButton_->setIcon(pausePreviewButton_->property("iconPause").value<QIcon>());
     pausePreviewButton_->setToolTip(QStringLiteral("Pause preview"));
   }
-  speedButton_->setEnabled(true);
   pausePreviewButton_->setEnabled(true);
   stopPreviewButton_->setIcon(stopPreviewButton_->property("iconEnabled").value<QIcon>());
   stopPreviewButton_->setEnabled(true);

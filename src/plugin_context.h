@@ -79,9 +79,6 @@ class PluginContext {
       window_->onSeekPreview = [this](int posMs) {
         seekPreview(posMs);
       };
-      window_->onSpeedChanged = [this](double speed) {
-        setPreviewSpeed(speed);
-      };
       window_->onImportSound = [this](int cellIndex) {
         importSound(cellIndex);
       };
@@ -291,7 +288,7 @@ class PluginContext {
       updatePreviewUi(QString(), 0, false);
     });
     positionPollTimer_ = new QTimer();
-    positionPollTimer_->setInterval(250);
+    positionPollTimer_->setInterval(50);
     QObject::connect(positionPollTimer_, &QTimer::timeout, [this]() {
       if (window_ && preview_.isActive()) {
         const int pos = preview_.currentPositionMs();
@@ -342,10 +339,6 @@ class PluginContext {
       if (positionPollTimer_) positionPollTimer_->start();
       if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, false);
     }
-  }
-
-  void setPreviewSpeed(double speed) {
-    preview_.setPlaybackSpeed(speed);
   }
 
   void updatePreviewUi(const QString& title, int durationMs, bool playing) {
