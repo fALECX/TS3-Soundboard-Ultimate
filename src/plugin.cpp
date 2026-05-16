@@ -16,7 +16,7 @@ namespace {
 
 constexpr int kPluginApiVersion = 26;
 constexpr int kMenuOpenWindow = 1;
-char* g_pluginId = nullptr;
+QByteArray g_pluginId;
 
 void logMessage(const char* text, LogLevel level = LogLevel_INFO) {
   if (ts3Functions.logMessage) {
@@ -87,10 +87,7 @@ int ts3plugin_init() {
 
 void ts3plugin_shutdown() {
   rpsu::PluginContext::instance().shutdown();
-  if (g_pluginId) {
-    std::free(g_pluginId);
-    g_pluginId = nullptr;
-  }
+  g_pluginId.clear();
 }
 
 int ts3plugin_offersConfigure() {
@@ -103,13 +100,9 @@ void ts3plugin_configure(void* handle, void* qParentWidget) {
 }
 
 void ts3plugin_registerPluginID(const char* id) {
-  if (!id) {
-    return;
+  if (id) {
+    g_pluginId = QByteArray(id);
   }
-
-  const size_t size = std::strlen(id) + 1;
-  g_pluginId = static_cast<char*>(std::malloc(size));
-  std::memcpy(g_pluginId, id, size);
 }
 
 const char* ts3plugin_commandKeyword() {

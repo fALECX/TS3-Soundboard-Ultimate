@@ -30,6 +30,13 @@ void hideProcessWindow(QProcess&) {}
 
 namespace {
 
+constexpr int kPollIntervalMs = 200;
+constexpr int kTailBufSize = 4096;
+constexpr int kSearchTimeoutMs = 20000;
+constexpr int kStartTimeoutMs = 10000;
+constexpr int kDownloadTimeoutMs = 180000;
+constexpr int kPreviewTimeoutMs = 60000;
+
 QString firstLine(const QString& text) {
   const QString trimmed = text.trimmed();
   if (trimmed.isEmpty()) {
@@ -86,81 +93,83 @@ QString moduleDirectory() {
 }
 #endif
 
-}  // namespace
-
-QString YouTubeService::resolveYtDlpPath(QString* errorMessage) const {
-  if (ytDlpPathCached_) {
-    if (errorMessage && cachedYtDlpPath_.isEmpty()) {
-      *errorMessage = QStringLiteral("yt-dlp.exe is missing from the packaged dashboard files.");
+QString resolveToolPath(
+  const QString& whereQuery,
+  const QStringList& bundledCandidates,
+  const QString& wingetQuery,
+  const QString& missingError,
+  QString* errorMessage,
+  QString& cachedPath,
+  bool& pathCached
+) {
+  if (pathCached) {
+    if (errorMessage && cachedPath.isEmpty()) {
+      *errorMessage = missingError;
     }
-    return cachedYtDlpPath_;
+    return cachedPath;
   }
 
-  const QStringList bundledCandidates = {
-    QDir(moduleDirectory()).filePath(QStringLiteral("yt-dlp.exe")),
-    QDir(moduleDirectory()).filePath(QStringLiteral("rp_soundboard_ultimate/yt-dlp.exe"))
-  };
   for (const QString& bundledPath : bundledCandidates) {
     if (QFileInfo::exists(bundledPath)) {
-      cachedYtDlpPath_ = bundledPath;
-      ytDlpPathCached_ = true;
+      cachedPath = bundledPath;
+      pathCached = true;
       return bundledPath;
     }
   }
 
-  const QString pathTool = runWhereCommand(QStringLiteral("yt-dlp"));
+  const QString pathTool = runWhereCommand(whereQuery);
   if (!pathTool.isEmpty()) {
-    cachedYtDlpPath_ = pathTool;
-    ytDlpPathCached_ = true;
+    cachedPath = pathTool;
+    pathCached = true;
     return pathTool;
   }
 
-  if (errorMessage) {
-    *errorMessage = QStringLiteral("yt-dlp.exe is missing from the packaged dashboard files.");
+  if (!wingetQuery.isEmpty()) {
+    const QString wingetPath = findWingetTool(wingetQuery);
+    if (!wingetPath.isEmpty()) {
+      cachedPath = wingetPath;
+      pathCached = true;
+      return wingetPath;
+    }
   }
-  ytDlpPathCached_ = true;
+
+  if (errorMessage) {
+    *errorMessage = missingError;
+  }
+  pathCached = true;
   return QString();
 }
 
+}  // namespace
+
+QString YouTubeService::resolveYtDlpPath(QString* errorMessage) const {
+  return resolveToolPath(
+    QStringLiteral("yt-dlp"),
+    {
+      QDir(moduleDirectory()).filePath(QStringLiteral("yt-dlp.exe")),
+      QDir(moduleDirectory()).filePath(QStringLiteral("rp_soundboard_ultimate/yt-dlp.exe"))
+    },
+    QString(),
+    QStringLiteral("yt-dlp.exe is missing from the packaged dashboard files."),
+    errorMessage,
+    cachedYtDlpPath_,
+    ytDlpPathCached_
+  );
+}
+
 QString YouTubeService::resolveFfmpegPath(QString* errorMessage) const {
-  if (ffmpegPathCached_) {
-    if (errorMessage && cachedFfmpegPath_.isEmpty()) {
-      *errorMessage = QStringLiteral("ffmpeg.exe was not found. Install FFmpeg or add it to PATH.");
-    }
-    return cachedFfmpegPath_;
-  }
-
-  const QStringList bundledCandidates = {
-    QDir(moduleDirectory()).filePath(QStringLiteral("ffmpeg.exe")),
-    QDir(moduleDirectory()).filePath(QStringLiteral("rp_soundboard_ultimate/ffmpeg.exe"))
-  };
-  for (const QString& bundledPath : bundledCandidates) {
-    if (QFileInfo::exists(bundledPath)) {
-      cachedFfmpegPath_ = bundledPath;
-      ffmpegPathCached_ = true;
-      return bundledPath;
-    }
-  }
-
-  const QString localPath = runWhereCommand(QStringLiteral("ffmpeg"));
-  if (!localPath.isEmpty()) {
-    cachedFfmpegPath_ = localPath;
-    ffmpegPathCached_ = true;
-    return localPath;
-  }
-
-  const QString wingetPath = findWingetTool(QStringLiteral("ffmpeg.exe"));
-  if (!wingetPath.isEmpty()) {
-    cachedFfmpegPath_ = wingetPath;
-    ffmpegPathCached_ = true;
-    return wingetPath;
-  }
-
-  if (errorMessage) {
-    *errorMessage = QStringLiteral("ffmpeg.exe was not found. Install FFmpeg or add it to PATH.");
-  }
-  ffmpegPathCached_ = true;
-  return QString();
+  return resolveToolPath(
+    QStringLiteral("ffmpeg"),
+    {
+      QDir(moduleDirectory()).filePath(QStringLiteral("ffmpeg.exe")),
+      QDir(moduleDirectory()).filePath(QStringLiteral("rp_soundboard_ultimate/ffmpeg.exe"))
+    },
+    QStringLiteral("ffmpeg.exe"),
+    QStringLiteral("ffmpeg.exe was not found. Install FFmpeg or add it to PATH."),
+    errorMessage,
+    cachedFfmpegPath_,
+    ffmpegPathCached_
+  );
 }
 
 QVector<YouTubeSearchResult> YouTubeService::search(const QString& query, int limit, QString* errorMessage) const {
@@ -186,7 +195,7 @@ QVector<YouTubeSearchResult> YouTubeService::search(const QString& query, int li
     }
   );
 
-  if (!process.waitForFinished(20000)) {
+  if (!process.waitForFinished(kSearchTimeoutMs)) {
     process.kill();
     if (errorMessage) {
       *errorMessage = QStringLiteral("YouTube search timed out.");
@@ -289,7 +298,7 @@ bool YouTubeService::downloadAudio(
     }
   );
 
-  if (!process.waitForStarted(10000)) {
+  if (!process.waitForStarted(kStartTimeoutMs)) {
     if (errorMessage) *errorMessage = QStringLiteral("yt-dlp failed to start.");
     return false;
   }
@@ -303,13 +312,12 @@ bool YouTubeService::downloadAudio(
   QString tail;
   QString lastErrLine;
   int elapsedMs = 0;
-  const int kTimeoutMs = 180000;
 
   auto drain = [&]() {
     const QByteArray chunk = process.readAllStandardOutput();
     if (chunk.isEmpty()) return;
     tail.append(QString::fromLocal8Bit(chunk));
-    if (tail.size() > 4096) tail = tail.right(4096);
+    if (tail.size() > kTailBufSize) tail = tail.right(kTailBufSize);
     // Track last non-empty line as a candidate error message.
     const QStringList lines = QString::fromLocal8Bit(chunk).split(
       QRegularExpression(QStringLiteral("[\r\n]+")), Qt::SkipEmptyParts);
@@ -320,10 +328,10 @@ bool YouTubeService::downloadAudio(
   };
 
   while (true) {
-    if (process.waitForFinished(200)) { drain(); break; }
+    if (process.waitForFinished(kPollIntervalMs)) { drain(); break; }
     drain();
 
-    elapsedMs += 200;
+    elapsedMs += kPollIntervalMs;
 
     if (cancelFlag && cancelFlag->load()) {
       process.kill();
@@ -332,7 +340,7 @@ bool YouTubeService::downloadAudio(
       return false;
     }
 
-    if (elapsedMs >= kTimeoutMs) {
+    if (elapsedMs >= kDownloadTimeoutMs) {
       process.kill();
       process.waitForFinished(3000);
       if (errorMessage) *errorMessage = QStringLiteral("YouTube download timed out.");
@@ -439,7 +447,7 @@ bool YouTubeService::downloadPreviewAudio(
     }
   );
 
-  if (!process.waitForStarted(10000)) {
+  if (!process.waitForStarted(kStartTimeoutMs)) {
     if (errorMessage) *errorMessage = QStringLiteral("yt-dlp failed to start.");
     return false;
   }
@@ -447,22 +455,20 @@ bool YouTubeService::downloadPreviewAudio(
   // Drain in a polling loop so the output pipe never fills up.
   QString tail;
   int elapsedMs = 0;
-  const int kTimeoutMs = 60000;  // 20s clip should never take longer than this
-  while (true) {
-    if (process.waitForFinished(200)) {
-      tail.append(QString::fromLocal8Bit(process.readAllStandardOutput()));
-      if (tail.size() > 4096) tail = tail.right(4096);
-      break;
-    }
+
+  auto drain = [&]() {
     tail.append(QString::fromLocal8Bit(process.readAllStandardOutput()));
-    if (tail.size() > 4096) tail = tail.right(4096);
-    elapsedMs += 200;
-    if (elapsedMs >= kTimeoutMs) {
+    if (tail.size() > kTailBufSize) tail = tail.right(kTailBufSize);
+  };
+
+  while (true) {
+    if (process.waitForFinished(kPollIntervalMs)) { drain(); break; }
+    drain();
+    elapsedMs += kPollIntervalMs;
+    if (elapsedMs >= kPreviewTimeoutMs) {
       process.kill();
       process.waitForFinished(3000);
-      if (errorMessage) {
-        *errorMessage = QStringLiteral("YouTube preview timed out.");
-      }
+      if (errorMessage) *errorMessage = QStringLiteral("YouTube preview timed out.");
       return false;
     }
   }

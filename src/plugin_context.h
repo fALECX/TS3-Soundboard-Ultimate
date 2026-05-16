@@ -7,8 +7,6 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
-#include <QHash>
-#include <QMessageBox>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QtGlobal>
@@ -46,7 +44,6 @@ class PluginContext {
 
   void shutdown() {
     playbackEngine_.shutdown();
-    stopPlaybackRouting();
     if (window_) {
       window_->close();
       delete window_;
@@ -167,8 +164,6 @@ class PluginContext {
     }
   }
 
-  // Reread library/boards/config from disk. Used by the runtime so it sees
-  // changes made by the external UI process between hotkey presses.
   void reloadState() {
     state_ = storage_.loadState();
     applyRuntimeConfig();
@@ -298,7 +293,6 @@ class PluginContext {
   }
 
   ~PluginContext() {
-    stopPlaybackRouting();
     if (positionPollTimer_) {
       positionPollTimer_->stop();
       delete positionPollTimer_;
@@ -393,10 +387,6 @@ class PluginContext {
     }
   }
 
-  void startPlaybackRouting() {}
-  void reapplyPlaybackRouting() {}
-  void stopPlaybackRouting() {}
-
   void createBoard(const QString& name, int rows, int cols) {
     const int safeRows = qBound(1, rows, 50);
     const int safeCols = qBound(1, cols, 50);
@@ -480,7 +470,6 @@ class PluginContext {
 
   void deleteSound(const QString& soundId) {
     if (storage_.deleteSound(soundId, state_)) {
-      // Also clear any cells referencing this sound across boards.
       for (BoardRecord& board : state_.boards) {
         for (Cell& cell : board.cells) {
           if (cell.soundId == soundId) cell.soundId.clear();
