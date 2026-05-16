@@ -76,6 +76,12 @@ class PluginContext {
       window_->onPausePreview = [this]() {
         pausePreview();
       };
+      window_->onSeekPreview = [this](int posMs) {
+        seekPreview(posMs);
+      };
+      window_->onSpeedChanged = [this](double speed) {
+        setPreviewSpeed(speed);
+      };
       window_->onImportSound = [this](int cellIndex) {
         importSound(cellIndex);
       };
@@ -228,6 +234,7 @@ class PluginContext {
       if (started) {
         currentPreviewTitle_ = sound.displayName;
         currentPreviewDurationMs_ = previewDurationMs;
+        if (positionPollTimer_) positionPollTimer_->start();
         updatePreviewUi(sound.displayName, previewDurationMs, true);
       }
 #endif
@@ -283,10 +290,23 @@ class PluginContext {
     QObject::connect(previewClearTimer_, &QTimer::timeout, [this]() {
       updatePreviewUi(QString(), 0, false);
     });
+    positionPollTimer_ = new QTimer();
+    positionPollTimer_->setInterval(250);
+    QObject::connect(positionPollTimer_, &QTimer::timeout, [this]() {
+      if (window_ && preview_.isActive()) {
+        const int pos = preview_.currentPositionMs();
+        if (pos >= 0) window_->updatePreviewProgress(pos);
+      }
+    });
   }
 
   ~PluginContext() {
     stopPlaybackRouting();
+    if (positionPollTimer_) {
+      positionPollTimer_->stop();
+      delete positionPollTimer_;
+      positionPollTimer_ = nullptr;
+    }
     if (previewClearTimer_) {
       previewClearTimer_->stop();
       delete previewClearTimer_;
@@ -299,21 +319,33 @@ class PluginContext {
     preview_.stop();
     currentPreviewTitle_.clear();
     currentPreviewDurationMs_ = 0;
-    if (previewClearTimer_) {
-      previewClearTimer_->stop();
-    }
+    if (positionPollTimer_) positionPollTimer_->stop();
+    if (previewClearTimer_) previewClearTimer_->stop();
     updatePreviewUi(QString(), 0, false);
   }
 
   void pausePreview() {
     if (preview_.isPaused()) {
       preview_.resume();
+      if (positionPollTimer_) positionPollTimer_->start();
       if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, false);
     } else {
       if (preview_.pause()) {
+        if (positionPollTimer_) positionPollTimer_->stop();
         if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, true);
       }
     }
+  }
+
+  void seekPreview(int posMs) {
+    if (preview_.seekTo(posMs)) {
+      if (positionPollTimer_) positionPollTimer_->start();
+      if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, false);
+    }
+  }
+
+  void setPreviewSpeed(double speed) {
+    preview_.setPlaybackSpeed(speed);
   }
 
   void updatePreviewUi(const QString& title, int durationMs, bool playing) {
@@ -586,6 +618,7 @@ class PluginContext {
   YouTubeService youtube_;
   MainWindow* window_ = nullptr;
   QTimer* previewClearTimer_ = nullptr;
+  QTimer* positionPollTimer_ = nullptr;
   QString lastPreviewPath_;
   QString currentPreviewTitle_;
   int currentPreviewDurationMs_ = 0;

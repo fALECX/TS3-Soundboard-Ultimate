@@ -43,6 +43,13 @@ void PreviewPlayer::setVolume(double volume) {
   }
 }
 
+void PreviewPlayer::setPlaybackSpeed(double speed) {
+  playbackSpeed_ = qBound(0.1, speed, 8.0);
+  if (!currentSoundId_.isEmpty()) {
+    sendMciCommand(QStringLiteral("set %1 speed %2").arg(alias_).arg(static_cast<int>(playbackSpeed_ * 1000.0)));
+  }
+}
+
 bool PreviewPlayer::playFile(const QString& soundId, const QString& path, int* durationMs, QString* errorMessage) {
   if (isPlaying(soundId)) {
     stop();
@@ -83,6 +90,10 @@ bool PreviewPlayer::playFile(const QString& soundId, const QString& path, int* d
     return false;
   }
 
+  if (playbackSpeed_ != 1.0) {
+    sendMciCommand(QStringLiteral("set %1 speed %2").arg(alias_).arg(static_cast<int>(playbackSpeed_ * 1000.0)));
+  }
+
   currentSoundId_ = soundId;
   if (durationMs) {
     *durationMs = currentDurationMs_;
@@ -112,12 +123,33 @@ bool PreviewPlayer::resume() {
   return true;
 }
 
+bool PreviewPlayer::seekTo(int posMs) {
+  if (currentSoundId_.isEmpty()) return false;
+  // play from new position (also exits paused state — seeking always resumes)
+  const bool ok = sendMciCommand(QStringLiteral("play %1 from %2").arg(alias_).arg(posMs));
+  if (ok) paused_ = false;
+  return ok;
+}
+
 bool PreviewPlayer::isPlaying(const QString& soundId) const {
   return !currentSoundId_.isEmpty() && currentSoundId_ == soundId;
 }
 
+bool PreviewPlayer::isActive() const {
+  return !currentSoundId_.isEmpty();
+}
+
 bool PreviewPlayer::isPaused() const {
   return paused_;
+}
+
+int PreviewPlayer::currentPositionMs() const {
+  if (currentSoundId_.isEmpty()) return -1;
+  QString pos;
+  if (sendMciCommand(QStringLiteral("status %1 position").arg(alias_), &pos)) {
+    return pos.trimmed().toInt();
+  }
+  return -1;
 }
 
 }  // namespace rpsu
