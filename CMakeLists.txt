@@ -24,6 +24,8 @@ set(PLUGIN_RUNTIME_NAME "rp_soundboard_ultimate_runtime")
 set(RPSU_PLUGIN_SUPPORT_SUBDIR "plugins/rp_soundboard_ultimate")
 set(RPSU_PLUGINFILE_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/release" CACHE PATH "Output directory for the final ts3_plugin package")
 option(RPSU_MAKE_PLUGIN_FILE "Create the ts3_plugin file" OFF)
+set(RPSU_YT_DLP_EXE "" CACHE FILEPATH "Path to a yt-dlp.exe binary to bundle with the plugin package")
+option(RPSU_DOWNLOAD_YT_DLP "Download yt-dlp.exe during configure when no local binary is available" ON)
 
 set(RPSU_QRC_FILES
   assets/assets.qrc
@@ -282,8 +284,52 @@ endif()
 
 get_filename_component(RPSU_COMPILER_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
 find_program(RPSU_FFMPEG_EXE ffmpeg.exe)
+
+if(NOT RPSU_YT_DLP_EXE)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/yt-dlp.exe")
+    set(RPSU_YT_DLP_EXE "${CMAKE_CURRENT_SOURCE_DIR}/resources/yt-dlp.exe")
+  else()
+    find_program(RPSU_PATH_YT_DLP_EXE NAMES yt-dlp.exe yt-dlp)
+    if(RPSU_PATH_YT_DLP_EXE)
+      set(RPSU_YT_DLP_EXE "${RPSU_PATH_YT_DLP_EXE}")
+    endif()
+  endif()
+endif()
+
+if(NOT RPSU_YT_DLP_EXE AND RPSU_DOWNLOAD_YT_DLP)
+  set(RPSU_DOWNLOADED_YT_DLP_EXE "${CMAKE_CURRENT_BINARY_DIR}/tools/yt-dlp.exe")
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tools")
+  message(STATUS "Downloading yt-dlp.exe for the TeamSpeak plugin package")
+  file(DOWNLOAD
+    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+    "${RPSU_DOWNLOADED_YT_DLP_EXE}"
+    STATUS RPSU_YT_DLP_DOWNLOAD_STATUS
+    TLS_VERIFY ON
+    SHOW_PROGRESS
+  )
+  list(GET RPSU_YT_DLP_DOWNLOAD_STATUS 0 RPSU_YT_DLP_DOWNLOAD_CODE)
+  if(RPSU_YT_DLP_DOWNLOAD_CODE EQUAL 0)
+    set(RPSU_YT_DLP_EXE "${RPSU_DOWNLOADED_YT_DLP_EXE}")
+  else()
+    list(GET RPSU_YT_DLP_DOWNLOAD_STATUS 1 RPSU_YT_DLP_DOWNLOAD_MESSAGE)
+    message(WARNING "Could not download yt-dlp.exe: ${RPSU_YT_DLP_DOWNLOAD_MESSAGE}")
+  endif()
+endif()
+
+if(RPSU_YT_DLP_EXE)
+  install(FILES "${RPSU_YT_DLP_EXE}" DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR} RENAME yt-dlp.exe)
+else()
+  set(RPSU_YT_DLP_MISSING_MESSAGE
+    "yt-dlp.exe was not found and could not be downloaded. Set RPSU_YT_DLP_EXE to a local yt-dlp.exe path, place resources/yt-dlp.exe in the source tree, install yt-dlp.exe on PATH, or enable RPSU_DOWNLOAD_YT_DLP."
+  )
+  if(RPSU_MAKE_PLUGIN_FILE)
+    message(FATAL_ERROR "${RPSU_YT_DLP_MISSING_MESSAGE}")
+  else()
+    message(WARNING "${RPSU_YT_DLP_MISSING_MESSAGE}")
+  endif()
+endif()
+
 install(FILES
-  "${CMAKE_CURRENT_SOURCE_DIR}/resources/yt-dlp.exe"
   "${RPSU_COMPILER_BIN_DIR}/libstdc++-6.dll"
   "${RPSU_COMPILER_BIN_DIR}/libgcc_s_seh-1.dll"
   "${RPSU_COMPILER_BIN_DIR}/libwinpthread-1.dll"

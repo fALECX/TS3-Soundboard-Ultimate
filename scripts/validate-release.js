@@ -39,6 +39,16 @@ if (pkg.main || pkg.build || pkg.releaseConfig) {
   process.exit(1);
 }
 
+if (!cmake.includes('RPSU_YT_DLP_EXE') || !cmake.includes('releases/latest/download/yt-dlp.exe')) {
+  console.error('Release validation failed: CMake must resolve or download yt-dlp.exe for packaged YouTube search support.');
+  process.exit(1);
+}
+
+if (/resources\/yt-dlp\.exe[\s\S]{0,200}OPTIONAL/.test(cmake)) {
+  console.error('Release validation failed: yt-dlp.exe is still installed as an optional source-tree file and can be silently omitted.');
+  process.exit(1);
+}
+
 const electronDeps = [];
 const dependencyGroups = [pkg.dependencies || {}, pkg.devDependencies || {}];
 for (const deps of dependencyGroups) {
