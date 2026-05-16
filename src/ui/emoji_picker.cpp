@@ -1,5 +1,7 @@
 #include "src/ui/emoji_picker.h"
 
+#include <iterator>
+
 #include <QDialogButtonBox>
 #include <QGridLayout>
 #include <QPushButton>
@@ -92,7 +94,7 @@ const char* const EmojiPicker::kEmojis[] = {
   "🏁","🚩","🎌","🏴","🏳️","🏳️‍🌈","🏳️‍⚧️","🏴‍☠️"
 };
 
-const int EmojiPicker::kEmojiCount = sizeof(kEmojis) / sizeof(kEmojis[0]);
+const int EmojiPicker::kEmojiCount = static_cast<int>(std::size(kEmojis));
 
 EmojiPicker::EmojiPicker(const QString& currentEmoji, QWidget* parent)
     : QDialog(parent), selectedEmoji_(currentEmoji.isEmpty() ? QString::fromLatin1("😀") : currentEmoji) {

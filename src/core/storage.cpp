@@ -174,18 +174,15 @@ void StorageManager::migrateLegacyElectronDataIfNeeded() const {
       continue;
     }
 
-    if (QFileInfo::exists(legacyLibrary)) {
-      QFile::remove(libraryPath_);
-      QFile::copy(legacyLibrary, libraryPath_);
-    }
-    if (QFileInfo::exists(legacyBoards)) {
-      QFile::remove(boardsPath_);
-      QFile::copy(legacyBoards, boardsPath_);
-    }
-    if (QFileInfo::exists(legacyAppConfig)) {
-      QFile::remove(configPath_);
-      QFile::copy(legacyAppConfig, configPath_);
-    }
+    const auto copyIfExists = [](const QString& src, const QString& dst) {
+      if (QFileInfo::exists(src)) {
+        QFile::remove(dst);
+        QFile::copy(src, dst);
+      }
+    };
+    copyIfExists(legacyLibrary, libraryPath_);
+    copyIfExists(legacyBoards, boardsPath_);
+    copyIfExists(legacyAppConfig, configPath_);
 
     const QString legacySounds = QDir(candidate).filePath(QStringLiteral("sounds"));
     if (QFileInfo::exists(legacySounds)) {
