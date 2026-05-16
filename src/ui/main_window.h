@@ -94,6 +94,7 @@ class MainWindow : public QWidget {
   QLabel* previewLabel_ = nullptr;
   QLabel* liveIndicator_ = nullptr;
   QPushButton* pausePreviewButton_ = nullptr;
+  QPushButton* resumePreviewButton_ = nullptr;
   QPushButton* stopPreviewButton_ = nullptr;
   QSlider* progressSlider_ = nullptr;
   bool sliderDragging_ = false;

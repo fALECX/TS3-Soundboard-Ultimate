@@ -60,3 +60,15 @@ test('CMake bundles yt-dlp instead of silently omitting YouTube support', () => 
   assert.match(cmake, /releases\/latest\/download\/yt-dlp\.exe/);
   assert.doesNotMatch(cmake, /resources\/yt-dlp\.exe[\s\S]{0,200}OPTIONAL/);
 });
+
+
+test('hotkey capture uses portable text for non-alphanumeric keys', () => {
+  const mainWindow = read('src/ui/main_window.cpp');
+
+  assert.match(mainWindow, /hotkeyTextForEvent/);
+  assert.match(mainWindow, /QKeySequence::PortableText/);
+  assert.match(mainWindow, /QStringLiteral\("Ctrl"\)/);
+  assert.match(mainWindow, /QStringLiteral\("Shift"\)/);
+  assert.doesNotMatch(mainWindow, /QKeySequence::NativeText/);
+});
+

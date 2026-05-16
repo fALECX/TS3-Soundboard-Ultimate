@@ -1,6 +1,6 @@
 {
   "name": "rp-soundboard-ultimate",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Native TeamSpeak 3 soundboard plugin for Windows.",
   "scripts": {

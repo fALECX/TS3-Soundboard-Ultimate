@@ -28,6 +28,7 @@
 #include <QShowEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QStringList>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QMessageBox>
@@ -215,7 +216,7 @@ static QIcon makeSunIcon(int size) {
   p.setPen(Qt::NoPen);
   // Rays
   for (int i = 0; i < 8; ++i) {
-    const double angle = i * M_PI / 4.0;
+    const double angle = i * 3.14159265358979323846 / 4.0;
     const double rx = cx + ro * std::cos(angle);
     const double ry = cy + ro * std::sin(angle);
     p.drawEllipse(QPointF(rx, ry), rw, rw);
@@ -623,17 +624,36 @@ class YouTubeSearchDialog : public QDialog {
         return QIcon(pm);
       };
 
+      // Filled square stop icon, white on a red button.
+      auto makeStopRowIcon = [](int size, QColor fg) {
+        QPixmap pm(size, size);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setPen(Qt::NoPen);
+        p.setBrush(fg);
+        const double inset = size * 0.28;
+        p.drawRoundedRect(QRectF(inset, inset, size - 2 * inset, size - 2 * inset), 2.0, 2.0);
+        return QIcon(pm);
+      };
+
       auto* previewButton     = new QPushButton(actionHost);
+      auto* stopRowButton     = new QPushButton(actionHost);
       auto* downloadRowButton = new QPushButton(actionHost);
       previewButton->setCursor(Qt::PointingHandCursor);
+      stopRowButton->setCursor(Qt::PointingHandCursor);
       downloadRowButton->setCursor(Qt::PointingHandCursor);
       previewButton->setFixedSize(26, 26);
+      stopRowButton->setFixedSize(26, 26);
       downloadRowButton->setFixedSize(26, 26);
       previewButton->setIconSize(QSize(14, 14));
+      stopRowButton->setIconSize(QSize(14, 14));
       downloadRowButton->setIconSize(QSize(14, 14));
       previewButton->setToolTip(QStringLiteral("Preview"));
+      stopRowButton->setToolTip(QStringLiteral("Stop preview"));
       downloadRowButton->setToolTip(QStringLiteral("Download"));
       previewButton->setIcon(makePlayIcon(48, QColor(t.textPrimary)));
+      stopRowButton->setIcon(makeStopRowIcon(48, QColor(Qt::white)));
       // Download button uses a strong, mode-independent blue so the white
       // icon stays readable in both light and dark themes.
       downloadRowButton->setIcon(makeDownloadIcon(48, QColor(Qt::white)));
@@ -641,6 +661,9 @@ class YouTubeSearchDialog : public QDialog {
         "QPushButton { background: %1; border: 1px solid %2; border-radius: 13px; padding: 0; }"
         "QPushButton:hover { background: %3; }")
         .arg(t.buttonBg, t.buttonBorder, t.buttonHover));
+      stopRowButton->setStyleSheet(QStringLiteral(
+        "QPushButton { background: #dc2626; border: 1px solid #991b1b; border-radius: 13px; padding: 0; }"
+        "QPushButton:hover { background: #ef4444; }"));
       downloadRowButton->setStyleSheet(QStringLiteral(
         "QPushButton { background: #2563eb; border: 1px solid #1e40af; border-radius: 13px; padding: 0; }"
         "QPushButton:hover { background: #1d4ed8; }"));
@@ -660,12 +683,17 @@ class YouTubeSearchDialog : public QDialog {
           statusLabel_->setText(QStringLiteral("Playing preview: %1").arg(result.title));
         }
       });
+      connect(stopRowButton, &QPushButton::clicked, this, [this]() {
+        if (owner_->onStopPreview) owner_->onStopPreview();
+        statusLabel_->setText(QStringLiteral("Preview stopped."));
+      });
       connect(downloadRowButton, &QPushButton::clicked, this, [this, index]() {
         resultsTable_->selectRow(index);
         downloadSelected();
       });
 
       actionLayout->addWidget(previewButton);
+      actionLayout->addWidget(stopRowButton);
       actionLayout->addWidget(downloadRowButton);
       actionLayout->addStretch(1);
       resultsTable_->setCellWidget(index, 3, actionHost);
@@ -764,6 +792,45 @@ class YouTubeSearchDialog : public QDialog {
     QDialog::closeEvent(event);
   }
 };
+
+QString hotkeyTextForEvent(const QKeyEvent* event) {
+  const int key = event->key();
+  const Qt::KeyboardModifiers modifiers = event->modifiers() &
+      (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+
+  auto modifierText = [](Qt::KeyboardModifiers mods) {
+    QStringList parts;
+    if (mods.testFlag(Qt::ControlModifier)) parts.append(QStringLiteral("Ctrl"));
+    if (mods.testFlag(Qt::ShiftModifier)) parts.append(QStringLiteral("Shift"));
+    if (mods.testFlag(Qt::AltModifier)) parts.append(QStringLiteral("Alt"));
+    if (mods.testFlag(Qt::MetaModifier)) parts.append(QStringLiteral("Meta"));
+    return parts.join(QStringLiteral("+"));
+  };
+
+  if (key == Qt::Key_Control || key == Qt::Key_Shift ||
+      key == Qt::Key_Alt || key == Qt::Key_Meta) {
+    QString text = modifierText(modifiers);
+    if (!text.isEmpty()) return text;
+
+    switch (key) {
+      case Qt::Key_Control: return QStringLiteral("Ctrl");
+      case Qt::Key_Shift: return QStringLiteral("Shift");
+      case Qt::Key_Alt: return QStringLiteral("Alt");
+      case Qt::Key_Meta: return QStringLiteral("Meta");
+      default: break;
+    }
+  }
+
+  QString text = QKeySequence(static_cast<int>(modifiers) | key)
+                   .toString(QKeySequence::PortableText);
+  if (text.isEmpty()) {
+    text = QKeySequence(key).toString(QKeySequence::PortableText);
+  }
+  if (text.isEmpty() && !event->text().isEmpty()) {
+    text = event->text().toUpper();
+  }
+  return text;
+}
 
 class HotkeyInputDialog : public QDialog {
  public:
@@ -874,14 +941,8 @@ class HotkeyInputDialog : public QDialog {
       return;
     }
 
-    QString captured;
-    if (key == Qt::Key_Control || key == Qt::Key_Shift ||
-        key == Qt::Key_Alt || key == Qt::Key_Meta) {
-      captured = QKeySequence(key).toString(QKeySequence::NativeText);
-    } else {
-      captured = QKeySequence(static_cast<int>(event->modifiers()) | key)
-                     .toString(QKeySequence::NativeText);
-    }
+    const QString captured = hotkeyTextForEvent(event);
+    if (captured.isEmpty()) return;
 
     if (activeBox_ == 1) {
       key1_ = captured;
@@ -1181,12 +1242,23 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   pausePreviewButton_->setFixedSize(32, 32);
   pausePreviewButton_->setIconSize(QSize(28, 28));
   pausePreviewButton_->setCursor(Qt::PointingHandCursor);
-  pausePreviewButton_->setToolTip(QStringLiteral("Pause preview"));
+  pausePreviewButton_->setToolTip(QStringLiteral("Pause"));
   pausePreviewButton_->setFlat(true);
   pausePreviewButton_->setProperty("iconPause",    QVariant::fromValue(makePauseIcon(64, true,  false)));
-  pausePreviewButton_->setProperty("iconResume",   QVariant::fromValue(makePauseIcon(64, true,  true)));
   pausePreviewButton_->setProperty("iconDisabled", QVariant::fromValue(makePauseIcon(64, false, false)));
   pausePreviewButton_->setIcon(pausePreviewButton_->property("iconDisabled").value<QIcon>());
+
+  resumePreviewButton_ = new QPushButton(previewBar_);
+  resumePreviewButton_->setObjectName(QStringLiteral("resumePreviewButton"));
+  resumePreviewButton_->setEnabled(false);
+  resumePreviewButton_->setFixedSize(32, 32);
+  resumePreviewButton_->setIconSize(QSize(28, 28));
+  resumePreviewButton_->setCursor(Qt::PointingHandCursor);
+  resumePreviewButton_->setToolTip(QStringLiteral("Continue"));
+  resumePreviewButton_->setFlat(true);
+  resumePreviewButton_->setProperty("iconResume",   QVariant::fromValue(makePauseIcon(64, true,  true)));
+  resumePreviewButton_->setProperty("iconDisabled", QVariant::fromValue(makePauseIcon(64, false, true)));
+  resumePreviewButton_->setIcon(resumePreviewButton_->property("iconDisabled").value<QIcon>());
 
   stopPreviewButton_ = new QPushButton(previewBar_);
   stopPreviewButton_->setObjectName(QStringLiteral("stopPreviewButton"));
@@ -1204,6 +1276,7 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   previewLayout->addSpacing(8);
   previewLayout->addWidget(previewLabel_, 1);
   previewLayout->addWidget(pausePreviewButton_);
+  previewLayout->addWidget(resumePreviewButton_);
   previewLayout->addWidget(stopPreviewButton_);
 
   progressSlider_ = new QSlider(Qt::Horizontal, previewBar_);
@@ -1462,6 +1535,9 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   connect(pausePreviewButton_, &QPushButton::clicked, this, [this]() {
     if (onPausePreview) onPausePreview();
   });
+  connect(resumePreviewButton_, &QPushButton::clicked, this, [this]() {
+    if (onPausePreview) onPausePreview();
+  });
   connect(stopPreviewButton_, &QPushButton::clicked, this, [this]() {
     if (onStopPreview) onStopPreview();
   });
@@ -1600,7 +1676,8 @@ void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool pla
     previewLabel_->setText(QStringLiteral("Preview stopped"));
     pausePreviewButton_->setEnabled(false);
     pausePreviewButton_->setIcon(pausePreviewButton_->property("iconDisabled").value<QIcon>());
-    pausePreviewButton_->setToolTip(QStringLiteral("Pause preview"));
+    resumePreviewButton_->setEnabled(false);
+    resumePreviewButton_->setIcon(resumePreviewButton_->property("iconDisabled").value<QIcon>());
     stopPreviewButton_->setEnabled(false);
     stopPreviewButton_->setIcon(stopPreviewButton_->property("iconDisabled").value<QIcon>());
     progressSlider_->setEnabled(false);
@@ -1612,16 +1689,19 @@ void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool pla
     previewLabel_->setText(
       QStringLiteral("Paused: %1  [%2]").arg(title, formatDurationMs(durationMs))
     );
-    pausePreviewButton_->setIcon(pausePreviewButton_->property("iconResume").value<QIcon>());
-    pausePreviewButton_->setToolTip(QStringLiteral("Resume preview"));
+    pausePreviewButton_->setEnabled(false);
+    pausePreviewButton_->setIcon(pausePreviewButton_->property("iconDisabled").value<QIcon>());
+    resumePreviewButton_->setEnabled(true);
+    resumePreviewButton_->setIcon(resumePreviewButton_->property("iconResume").value<QIcon>());
   } else {
     previewLabel_->setText(
       QStringLiteral("Playing: %1  [%2]").arg(title, formatDurationMs(durationMs))
     );
+    pausePreviewButton_->setEnabled(true);
     pausePreviewButton_->setIcon(pausePreviewButton_->property("iconPause").value<QIcon>());
-    pausePreviewButton_->setToolTip(QStringLiteral("Pause preview"));
+    resumePreviewButton_->setEnabled(false);
+    resumePreviewButton_->setIcon(resumePreviewButton_->property("iconDisabled").value<QIcon>());
   }
-  pausePreviewButton_->setEnabled(true);
   stopPreviewButton_->setIcon(stopPreviewButton_->property("iconEnabled").value<QIcon>());
   stopPreviewButton_->setEnabled(true);
   if (durationMs > 0) {

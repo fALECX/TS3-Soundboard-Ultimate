@@ -34,6 +34,13 @@ class PluginContext {
   bool initialize() {
     state_ = storage_.loadState();
     playbackEngine_.onPreviewStatusChanged = [this](const QString& title, int durationMs, bool playing) {
+      // Cache the title/duration so pausePreview() can pass them back to the
+      // UI (setPreviewStatus disables buttons if title is empty, which used to
+      // make pause look like stop in TS3-routing mode).
+      if (playing) {
+        currentPreviewTitle_ = title;
+        currentPreviewDurationMs_ = durationMs;
+      }
       updatePreviewUi(title, durationMs, playing);
     };
     playbackEngine_.initialize();
@@ -316,6 +323,19 @@ class PluginContext {
   }
 
   void pausePreview() {
+    // The button serves both audio paths: the MCI preview (YouTube previews,
+    // non-TS3 mode) and the Sampler-routed playback (TS3 mode). Pick whichever
+    // is currently active so a single button works in both contexts.
+    if (playbackEngine_.isActive()) {
+      if (playbackEngine_.isPaused()) {
+        playbackEngine_.resumePlayback();
+        if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, false);
+      } else {
+        playbackEngine_.pausePlayback();
+        if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, true);
+      }
+      return;
+    }
     if (preview_.isPaused()) {
       preview_.resume();
       if (positionPollTimer_) positionPollTimer_->start();
@@ -533,7 +553,9 @@ class PluginContext {
     storage_.refreshSoundMetadata(sound);
     state_.library.push_back(sound);
     storage_.saveState(state_);
-    refreshWindow();
+    // refreshWindow() touches Qt widgets — must run on the main thread.
+    // Post it there; the event pump in runWithLoading will pick it up.
+    QTimer::singleShot(0, window_, [this]() { refreshWindow(); });
     return sound.soundId;
   }
 
@@ -541,16 +563,6 @@ class PluginContext {
     const QString previewRoot = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
                                   .filePath(QStringLiteral("rpsu_youtube_preview"));
     QDir().mkpath(previewRoot);
-
-    // Stop MCI first so the previous WAV file isn't held open, then delete.
-    // Doing it in the wrong order leaks file handles and after many previews
-    // the MCI device can get into a bad state.
-    preview_.stop();
-    if (!lastPreviewPath_.isEmpty()) {
-      QFile::remove(lastPreviewPath_);
-      lastPreviewPath_.clear();
-    }
-    // Best-effort cleanup of any stale preview files from earlier sessions.
     cleanupStalePreviewFiles(previewRoot);
 
     QString previewPath;
@@ -558,19 +570,38 @@ class PluginContext {
       return false;
     }
 
-    int previewDurationMs = 0;
-    QString previewError;
+    // MCI must be driven from the main (UI) thread — its alias lifetime and
+    // internal window messages are tied to the thread that opened it. Calling
+    // playFile/stop from the async future races with the dialog/main loop and
+    // can leave aliases in a state where stop() silently fails. Post all MCI
+    // work and UI updates to the main thread.
+    const QString title = result.title;
     const QString previewSoundId = QStringLiteral("youtube_preview_%1").arg(result.id);
-    if (!preview_.playFile(previewSoundId, previewPath, &previewDurationMs, &previewError)) {
-      QFile::remove(previewPath);
-      if (errorMessage && errorMessage->isEmpty()) {
-        *errorMessage = previewError;
+    QTimer::singleShot(0, window_, [this, previewPath, previewSoundId, title]() {
+      preview_.stop();
+      if (!lastPreviewPath_.isEmpty()) {
+        QFile::remove(lastPreviewPath_);
+        lastPreviewPath_.clear();
       }
-      return false;
-    }
 
-    lastPreviewPath_ = previewPath;
-    updatePreviewUi(result.title, previewDurationMs, true);
+      int previewDurationMs = 0;
+      QString previewError;
+      if (!preview_.playFile(previewSoundId, previewPath, &previewDurationMs, &previewError)) {
+        QFile::remove(previewPath);
+        if (window_) {
+          window_->setPreviewStatus(
+            previewError.isEmpty() ? QStringLiteral("Preview failed.") : previewError,
+            0, false);
+        }
+        return;
+      }
+
+      lastPreviewPath_ = previewPath;
+      currentPreviewTitle_ = title;
+      currentPreviewDurationMs_ = previewDurationMs;
+      if (positionPollTimer_) positionPollTimer_->start();
+      updatePreviewUi(title, previewDurationMs, true);
+    });
     return true;
   }
 

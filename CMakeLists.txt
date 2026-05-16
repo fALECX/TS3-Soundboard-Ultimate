@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
-project(rp_soundboard_ultimate_ts3_plugin VERSION 0.3.0 LANGUAGES C CXX)
+project(rp_soundboard_ultimate_ts3_plugin VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -273,7 +273,31 @@ if(TARGET Qt${QT_VERSION_MAJOR}::qmake)
 endif()
 
 get_filename_component(RPSU_COMPILER_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
-find_program(RPSU_FFMPEG_EXE ffmpeg.exe)
+set(RPSU_FFMPEG_EXE "" CACHE FILEPATH "Path to ffmpeg.exe to bundle with the plugin package")
+set(RPSU_FFPROBE_EXE "" CACHE FILEPATH "Path to ffprobe.exe to bundle with the plugin package")
+
+if(NOT RPSU_FFMPEG_EXE)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/ffmpeg.exe")
+    set(RPSU_FFMPEG_EXE "${CMAKE_CURRENT_SOURCE_DIR}/resources/ffmpeg.exe")
+  else()
+    find_program(RPSU_FFMPEG_FOUND NAMES ffmpeg.exe ffmpeg)
+    if(RPSU_FFMPEG_FOUND)
+      set(RPSU_FFMPEG_EXE "${RPSU_FFMPEG_FOUND}")
+    endif()
+  endif()
+endif()
+
+if(NOT RPSU_FFPROBE_EXE)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/ffprobe.exe")
+    set(RPSU_FFPROBE_EXE "${CMAKE_CURRENT_SOURCE_DIR}/resources/ffprobe.exe")
+  elseif(RPSU_FFMPEG_EXE)
+    get_filename_component(RPSU_FFMPEG_DIR "${RPSU_FFMPEG_EXE}" DIRECTORY)
+    find_program(RPSU_FFPROBE_FOUND NAMES ffprobe.exe ffprobe HINTS "${RPSU_FFMPEG_DIR}")
+    if(RPSU_FFPROBE_FOUND)
+      set(RPSU_FFPROBE_EXE "${RPSU_FFPROBE_FOUND}")
+    endif()
+  endif()
+endif()
 
 if(NOT RPSU_YT_DLP_EXE)
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/yt-dlp.exe")
@@ -328,6 +352,9 @@ install(FILES
 )
 if(RPSU_FFMPEG_EXE)
   install(FILES "${RPSU_FFMPEG_EXE}" DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR} OPTIONAL)
+endif()
+if(RPSU_FFPROBE_EXE)
+  install(FILES "${RPSU_FFPROBE_EXE}" DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR} OPTIONAL)
 endif()
 
 install(TARGETS rpsu_ui_preview

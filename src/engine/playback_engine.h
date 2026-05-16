@@ -28,6 +28,10 @@ class PlaybackEngine {
   void setMuteMyselfDuringPlayback(bool enabled);
   void stopPlayback();
   bool playSound(const SoundRecord& sound, const QString& soundsDir, QString* errorMessage);
+  void pausePlayback();
+  void resumePlayback();
+  bool isPaused() const;
+  bool isActive() const;
 
   bool mixCaptured(uint64 serverConnectionHandlerID, short* samples, int sampleCount, int channels);
   void mixPlayback(uint64 serverConnectionHandlerID, short* samples, int sampleCount, int channels, const unsigned int* channelSpeakerArray, unsigned int* channelFillMask);

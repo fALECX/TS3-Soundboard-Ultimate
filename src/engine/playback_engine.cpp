@@ -64,6 +64,23 @@ void PlaybackEngine::stopPlayback() {
   sampler_.stopPlayback();
 }
 
+void PlaybackEngine::pausePlayback() {
+  sampler_.pausePlayback();
+}
+
+void PlaybackEngine::resumePlayback() {
+  sampler_.unpausePlayback();
+}
+
+bool PlaybackEngine::isPaused() const {
+  return sampler_.getState() == Sampler::ePAUSED;
+}
+
+bool PlaybackEngine::isActive() const {
+  const auto state = sampler_.getState();
+  return state == Sampler::ePLAYING || state == Sampler::ePAUSED || state == Sampler::ePLAYING_PREVIEW;
+}
+
 SoundInfo PlaybackEngine::toSoundInfo(const SoundRecord& sound, const QString& soundsDir) const {
   SoundInfo info;
   info.filename = QDir(soundsDir).filePath(sound.filename);
