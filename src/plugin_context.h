@@ -350,8 +350,8 @@ class PluginContext {
   }
 
   void resizeActiveBoard(int rows, int cols) {
-    const int nextRows = qBound(1, rows, 50);
-    const int nextCols = qBound(1, cols, 50);
+    const int nextRows = qBound(1, rows, kMaxBoardDimension);
+    const int nextCols = qBound(1, cols, kMaxBoardDimension);
     const int nextTotal = nextRows * nextCols;
 
     for (BoardRecord& board : state_.boards) {
@@ -388,8 +388,8 @@ class PluginContext {
   }
 
   void createBoard(const QString& name, int rows, int cols) {
-    const int safeRows = qBound(1, rows, 50);
-    const int safeCols = qBound(1, cols, 50);
+    const int safeRows = qBound(1, rows, kMaxBoardDimension);
+    const int safeCols = qBound(1, cols, kMaxBoardDimension);
     BoardRecord board = createBoardRecord(name.trimmed().isEmpty() ? QStringLiteral("New Board") : name.trimmed(), safeCols, safeRows);
     state_.activeBoardId = board.id;
     state_.boards.push_back(board);
@@ -470,12 +470,6 @@ class PluginContext {
 
   void deleteSound(const QString& soundId) {
     if (storage_.deleteSound(soundId, state_)) {
-      for (BoardRecord& board : state_.boards) {
-        for (Cell& cell : board.cells) {
-          if (cell.soundId == soundId) cell.soundId.clear();
-        }
-        board.unassignedSoundIds.removeAll(soundId);
-      }
       storage_.saveState(state_);
       refreshWindow();
     }

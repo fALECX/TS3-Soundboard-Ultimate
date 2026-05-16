@@ -1089,12 +1089,12 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   auto* sizeLayout = new QHBoxLayout();
   sizeLayout->addWidget(new QLabel(QStringLiteral("Rows:"), settingsFrame_));
   rowsSpin_ = new QSpinBox(settingsFrame_);
-  rowsSpin_->setRange(1, 50);
+  rowsSpin_->setRange(1, kMaxBoardDimension);
   sizeLayout->addWidget(rowsSpin_);
   sizeLayout->addSpacing(8);
   sizeLayout->addWidget(new QLabel(QStringLiteral("Columns:"), settingsFrame_));
   colsSpin_ = new QSpinBox(settingsFrame_);
-  colsSpin_->setRange(1, 50);
+  colsSpin_->setRange(1, kMaxBoardDimension);
   sizeLayout->addWidget(colsSpin_);
   sizeLayout->addStretch(1);
 
@@ -1871,10 +1871,10 @@ void MainWindow::rebuild() {
 
   cellCards_.clear();
   while (QLayoutItem* item = gridLayout_->takeAt(0)) {
-    delete item->widget();
+    if (item->widget()) item->widget()->deleteLater();
     delete item;
   }
-  for (int i = 0; i < 50; ++i) {
+  for (int i = 0; i < kMaxBoardDimension; ++i) {
     gridLayout_->setColumnStretch(i, 0);
     gridLayout_->setColumnMinimumWidth(i, 0);
     gridLayout_->setRowStretch(i, 0);

@@ -72,6 +72,8 @@ struct HotkeyBinding {
   bool isBoard = false;
 };
 
+constexpr int kMaxBoardDimension = 50;
+
 QString createId(const QString& prefix);
 QString nowIso();
 QString sanitizeFilenameBase(const QString& value);
