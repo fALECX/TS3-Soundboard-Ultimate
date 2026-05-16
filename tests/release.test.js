@@ -52,3 +52,11 @@ test('obsolete web entry files are absent from the repo root', () => {
     assert.equal(fs.existsSync(path.join(root, file)), false, `${file} should not exist`);
   }
 });
+
+test('CMake bundles yt-dlp instead of silently omitting YouTube support', () => {
+  const cmake = read('CMakeLists.txt');
+
+  assert.match(cmake, /RPSU_YT_DLP_EXE/);
+  assert.match(cmake, /releases\/latest\/download\/yt-dlp\.exe/);
+  assert.doesNotMatch(cmake, /resources\/yt-dlp\.exe[\s\S]{0,200}OPTIONAL/);
+});
