@@ -52,10 +52,8 @@ cmake --install build_msvc_qt5 --prefix build_msvc_qt5/install
 TeamSpeak smoke test:
 
 ```powershell
-npm run test:ts3:start
+powershell -ExecutionPolicy Bypass -File scripts/test-teamspeak.ps1 -Build -StopTeamSpeak -StartTeamSpeak -BuildDir .\build_msvc_qt5
 ```
-
-This smoke test stops TeamSpeak first if it is open, deploys the staged plugin, starts TeamSpeak, and checks the plugin load path.
 
 ## Pull Request Expectations
 
@@ -79,6 +77,6 @@ Include:
 - [ ] Build succeeds from a clean configure
 - [ ] `npm test` passes
 - [ ] `npm run validate:release` passes
-- [ ] `npm run test:ts3` passes if the TeamSpeak load path was touched
+- [ ] TeamSpeak plugin load path still works if touched
 - [ ] Docs/changelog updated when needed
 - [ ] No local artifacts, logs, or generated outputs were committed

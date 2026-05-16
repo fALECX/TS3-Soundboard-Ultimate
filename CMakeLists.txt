@@ -47,8 +47,6 @@ set(PLUGIN_RUNTIME_SOURCES
   src/audio/preview_player.cpp
   src/audio/wav_decoder.cpp
   src/audio/mixer.cpp
-  src/voicemods/voicemod_manager.cpp
-  src/voicemods/vst2_host.cpp
   src/ui/main_window.cpp
   src/ui/emoji_picker.cpp
   ${RPSU_QRC_FILES}
@@ -74,9 +72,6 @@ set(HEADERS
   src/audio/preview_player.h
   src/audio/wav_decoder.h
   src/audio/mixer.h
-  src/voicemods/voicemod_manager.h
-  src/voicemods/vst2_abi.h
-  src/voicemods/vst2_host.h
   src/ui/main_window.h
   src/ui/emoji_picker.h
 )
@@ -163,8 +158,6 @@ add_executable(rpsu_ui_preview
   src/audio/preview_player.cpp
   src/audio/wav_decoder.cpp
   src/audio/mixer.cpp
-  src/voicemods/voicemod_manager.cpp
-  src/voicemods/vst2_host.cpp
   src/ui/main_window.cpp
   src/ui/emoji_picker.cpp
   src/plugin_context.h
@@ -185,9 +178,6 @@ add_executable(rpsu_ui_preview
   src/audio/preview_player.h
   src/audio/wav_decoder.h
   src/audio/mixer.h
-  src/voicemods/voicemod_manager.h
-  src/voicemods/vst2_abi.h
-  src/voicemods/vst2_host.h
   src/ui/main_window.h
   src/ui/emoji_picker.h
 )

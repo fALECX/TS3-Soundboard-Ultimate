@@ -48,9 +48,6 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QSize>
-#include <QStackedWidget>
-#include <QStandardPaths>
-#include <QFileDialog>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QToolButton>
@@ -214,12 +211,11 @@ static QIcon makeSunIcon(int size) {
   const double r  = size * 0.21;
   const double ro = size * 0.42;
   const double rw = size * 0.06;
-  constexpr double kPi = 3.14159265358979323846;
   p.setBrush(fill);
   p.setPen(Qt::NoPen);
   // Rays
   for (int i = 0; i < 8; ++i) {
-    const double angle = i * kPi / 4.0;
+    const double angle = i * M_PI / 4.0;
     const double rx = cx + ro * std::cos(angle);
     const double ry = cy + ro * std::sin(angle);
     p.drawEllipse(QPointF(rx, ry), rw, rw);
@@ -954,27 +950,6 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   }
   topBar->addWidget(brandButton);
 
-  // ── Tab buttons: Soundboard / Voicemods ─────────────────────────────────
-  tabSoundboardButton_ = new QToolButton(topBarFrame);
-  tabSoundboardButton_->setObjectName(QStringLiteral("tabButton"));
-  tabSoundboardButton_->setText(QStringLiteral("Soundboard"));
-  tabSoundboardButton_->setCheckable(true);
-  tabSoundboardButton_->setChecked(true);
-  tabSoundboardButton_->setAutoExclusive(true);
-  tabSoundboardButton_->setCursor(Qt::PointingHandCursor);
-  tabSoundboardButton_->setMinimumHeight(34);
-
-  tabVoicemodsButton_ = new QToolButton(topBarFrame);
-  tabVoicemodsButton_->setObjectName(QStringLiteral("tabButton"));
-  tabVoicemodsButton_->setText(QStringLiteral("Voicemods"));
-  tabVoicemodsButton_->setCheckable(true);
-  tabVoicemodsButton_->setAutoExclusive(true);
-  tabVoicemodsButton_->setCursor(Qt::PointingHandCursor);
-  tabVoicemodsButton_->setMinimumHeight(34);
-
-  topBar->addWidget(tabSoundboardButton_);
-  topBar->addWidget(tabVoicemodsButton_);
-
   boardSelector_ = new QComboBox(topBarFrame);
   boardSelector_->setObjectName(QStringLiteral("boardSelector"));
   addBoardButton_ = new QToolButton(topBarFrame);
@@ -1328,55 +1303,7 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   body->addWidget(libraryPanel, 1);
   contentLayout->addLayout(body, 1);
 
-  // ── Voicemod page (Tab 2) ────────────────────────────────────────────────
-  auto* voicemodPage = new QWidget(this);
-  auto* voicemodLayout = new QVBoxLayout(voicemodPage);
-  voicemodLayout->setContentsMargins(20, 16, 20, 16);
-  voicemodLayout->setSpacing(12);
-
-  auto* voicemodTitle = new QLabel(QStringLiteral("Voicemod (Voice FX) — Preview"), voicemodPage);
-  voicemodTitle->setStyleSheet(QStringLiteral("font-weight: 700; font-size: 16px;"));
-  voicemodLayout->addWidget(voicemodTitle);
-
-  auto* voicemodHelp = new QLabel(
-    QStringLiteral("Load any VST 2.x DLL (e.g. ReaPlugs from cockos.com — ReaEQ.dll, ReaComp.dll, "
-                   "ReaVerb.dll) to transform your microphone input before TeamSpeak sends it. "
-                   "Press \"Randomize\" to apply random parameter values, then enable the chain."),
-    voicemodPage);
-  voicemodHelp->setWordWrap(true);
-  voicemodHelp->setStyleSheet(QStringLiteral("color: #555; font-size: 12px;"));
-  voicemodLayout->addWidget(voicemodHelp);
-
-  voicemodStatusLabel_ = new QLabel(QStringLiteral("No VST loaded."), voicemodPage);
-  voicemodStatusLabel_->setStyleSheet(QStringLiteral("font-size: 13px; padding: 6px;"));
-  voicemodStatusLabel_->setWordWrap(true);
-  voicemodLayout->addWidget(voicemodStatusLabel_);
-
-  auto* voicemodButtonRow = new QHBoxLayout();
-  voicemodButtonRow->setSpacing(8);
-  voicemodLoadButton_ = new QPushButton(QStringLiteral("Load VST plugin..."), voicemodPage);
-  voicemodLoadButton_->setMinimumHeight(36);
-  voicemodUnloadButton_ = new QPushButton(QStringLiteral("Unload"), voicemodPage);
-  voicemodUnloadButton_->setMinimumHeight(36);
-  voicemodRandomizeButton_ = new QPushButton(QStringLiteral("Randomize parameters"), voicemodPage);
-  voicemodRandomizeButton_->setMinimumHeight(36);
-  voicemodButtonRow->addWidget(voicemodLoadButton_);
-  voicemodButtonRow->addWidget(voicemodUnloadButton_);
-  voicemodButtonRow->addWidget(voicemodRandomizeButton_);
-  voicemodButtonRow->addStretch(1);
-  voicemodLayout->addLayout(voicemodButtonRow);
-
-  voicemodEnabledCheck_ = new QCheckBox(QStringLiteral("Enable voicemod on microphone"), voicemodPage);
-  voicemodEnabledCheck_->setStyleSheet(QStringLiteral("font-size: 13px; padding: 6px;"));
-  voicemodLayout->addWidget(voicemodEnabledCheck_);
-
-  voicemodLayout->addStretch(1);
-
-  // Stacked widget swaps between soundboard content and voicemod page.
-  tabStack_ = new QStackedWidget(this);
-  tabStack_->addWidget(contentWidget);   // index 0 = Soundboard
-  tabStack_->addWidget(voicemodPage);    // index 1 = Voicemods
-  root->addWidget(tabStack_, 1);
+  root->addWidget(contentWidget, 1);
 
   // ── Initial theme ────────────────────────────────────────────────────────
   applyTheme();
@@ -1538,67 +1465,6 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   connect(stopPreviewButton_, &QPushButton::clicked, this, [this]() {
     if (onStopPreview) onStopPreview();
   });
-
-  // ── Tab switching ───────────────────────────────────────────────────────
-  connect(tabSoundboardButton_, &QToolButton::clicked, this, [this]() {
-    if (tabStack_) tabStack_->setCurrentIndex(0);
-  });
-  connect(tabVoicemodsButton_, &QToolButton::clicked, this, [this]() {
-    if (tabStack_) tabStack_->setCurrentIndex(1);
-    refreshVoicemodStatus();
-  });
-
-  // ── Voicemod page actions ───────────────────────────────────────────────
-  connect(voicemodLoadButton_, &QPushButton::clicked, this, [this]() {
-    const QString commonVstDir = QStringLiteral("C:/Program Files/Common Files/VST2");
-    const QString reaperDir = QStringLiteral("C:/Program Files/REAPER (x64)/Plugins/FX");
-    QString startDir = QDir(commonVstDir).exists() ? commonVstDir
-                       : QDir(reaperDir).exists()   ? reaperDir
-                       : QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
-    const QString path = QFileDialog::getOpenFileName(
-      this,
-      QStringLiteral("Select a VST 2.x plugin (.dll)"),
-      startDir,
-      QStringLiteral("VST plugin (*.dll)"));
-    if (path.isEmpty()) return;
-    if (!onVoicemodLoadVst) {
-      QMessageBox::warning(this, QStringLiteral("Voicemod"),
-        QStringLiteral("Voicemod backend is not initialized."));
-      return;
-    }
-    const QString err = onVoicemodLoadVst(path);
-    if (!err.isEmpty()) {
-      QMessageBox::warning(this, QStringLiteral("VST load failed"), err);
-    }
-    refreshVoicemodStatus();
-  });
-
-  connect(voicemodUnloadButton_, &QPushButton::clicked, this, [this]() {
-    if (onVoicemodUnloadVst) onVoicemodUnloadVst();
-    if (voicemodEnabledCheck_) {
-      QSignalBlocker b(voicemodEnabledCheck_);
-      voicemodEnabledCheck_->setChecked(false);
-    }
-    if (onVoicemodEnabledChanged) onVoicemodEnabledChanged(false);
-    refreshVoicemodStatus();
-  });
-
-  connect(voicemodRandomizeButton_, &QPushButton::clicked, this, [this]() {
-    if (onVoicemodRandomizeParams) onVoicemodRandomizeParams();
-    refreshVoicemodStatus();
-  });
-
-  connect(voicemodEnabledCheck_, &QCheckBox::toggled, this, [this](bool on) {
-    if (onVoicemodEnabledChanged) onVoicemodEnabledChanged(on);
-    refreshVoicemodStatus();
-  });
-}
-
-void MainWindow::refreshVoicemodStatus() {
-  if (!voicemodStatusLabel_) return;
-  if (onVoicemodQueryStatus) {
-    voicemodStatusLabel_->setText(onVoicemodQueryStatus());
-  }
 }
 
 // ---------------------------------------------------------------------------
