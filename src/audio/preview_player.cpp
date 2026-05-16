@@ -10,12 +10,15 @@ namespace rpsu {
 
 namespace {
 
+constexpr int kMciBufSize = 256;
+constexpr int kMciVolumeScale = 1000;
+
 bool sendMciCommand(const QString& command, QString* response = nullptr) {
-  wchar_t buffer[256] = {0};
+  wchar_t buffer[kMciBufSize] = {0};
   const MCIERROR error = mciSendStringW(
     reinterpret_cast<LPCWSTR>(command.utf16()),
     response ? buffer : nullptr,
-    response ? 256 : 0,
+    response ? kMciBufSize : 0,
     NULL
   );
 
@@ -38,7 +41,7 @@ PreviewPlayer::~PreviewPlayer() {
 void PreviewPlayer::setVolume(double volume) {
   volume_ = qBound(0.0, volume, 1.0);
   if (!currentSoundId_.isEmpty()) {
-    const int scaled = qBound(0, static_cast<int>(volume_ * 1000.0), 1000);
+    const int scaled = qBound(0, static_cast<int>(volume_ * kMciVolumeScale), kMciVolumeScale);
     sendMciCommand(QStringLiteral("setaudio %1 volume to %2").arg(alias_).arg(scaled));
   }
 }
@@ -64,7 +67,7 @@ bool PreviewPlayer::playFile(const QString& soundId, const QString& path, int* d
   }
 
   sendMciCommand(QStringLiteral("set %1 time format milliseconds").arg(alias_));
-  const int scaledVolume = qBound(0, static_cast<int>(volume_ * 1000.0), 1000);
+  const int scaledVolume = qBound(0, static_cast<int>(volume_ * kMciVolumeScale), kMciVolumeScale);
   sendMciCommand(QStringLiteral("setaudio %1 volume to %2").arg(alias_).arg(scaledVolume));
 
   QString durationValue;
