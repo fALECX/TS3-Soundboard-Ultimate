@@ -95,10 +95,29 @@ void PreviewPlayer::stop() {
   sendMciCommand(QStringLiteral("close %1").arg(alias_));
   currentSoundId_.clear();
   currentDurationMs_ = 0;
+  paused_ = false;
+}
+
+bool PreviewPlayer::pause() {
+  if (currentSoundId_.isEmpty() || paused_) return false;
+  if (!sendMciCommand(QStringLiteral("pause %1").arg(alias_))) return false;
+  paused_ = true;
+  return true;
+}
+
+bool PreviewPlayer::resume() {
+  if (currentSoundId_.isEmpty() || !paused_) return false;
+  if (!sendMciCommand(QStringLiteral("resume %1").arg(alias_))) return false;
+  paused_ = false;
+  return true;
 }
 
 bool PreviewPlayer::isPlaying(const QString& soundId) const {
   return !currentSoundId_.isEmpty() && currentSoundId_ == soundId;
+}
+
+bool PreviewPlayer::isPaused() const {
+  return paused_;
 }
 
 }  // namespace rpsu

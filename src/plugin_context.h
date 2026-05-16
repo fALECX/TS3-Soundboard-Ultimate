@@ -73,6 +73,9 @@ class PluginContext {
       window_->onStopPreview = [this]() {
         stopPreview();
       };
+      window_->onPausePreview = [this]() {
+        pausePreview();
+      };
       window_->onImportSound = [this](int cellIndex) {
         importSound(cellIndex);
       };
@@ -223,6 +226,8 @@ class PluginContext {
         error = previewError;
       }
       if (started) {
+        currentPreviewTitle_ = sound.displayName;
+        currentPreviewDurationMs_ = previewDurationMs;
         updatePreviewUi(sound.displayName, previewDurationMs, true);
       }
 #endif
@@ -292,10 +297,23 @@ class PluginContext {
   void stopPreview() {
     playbackEngine_.stopPlayback();
     preview_.stop();
+    currentPreviewTitle_.clear();
+    currentPreviewDurationMs_ = 0;
     if (previewClearTimer_) {
       previewClearTimer_->stop();
     }
     updatePreviewUi(QString(), 0, false);
+  }
+
+  void pausePreview() {
+    if (preview_.isPaused()) {
+      preview_.resume();
+      if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, false);
+    } else {
+      if (preview_.pause()) {
+        if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, true);
+      }
+    }
   }
 
   void updatePreviewUi(const QString& title, int durationMs, bool playing) {
@@ -569,6 +587,8 @@ class PluginContext {
   MainWindow* window_ = nullptr;
   QTimer* previewClearTimer_ = nullptr;
   QString lastPreviewPath_;
+  QString currentPreviewTitle_;
+  int currentPreviewDurationMs_ = 0;
 };
 
 }  // namespace rpsu
