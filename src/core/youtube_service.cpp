@@ -18,6 +18,16 @@
 
 namespace rpsu {
 
+#ifdef _WIN32
+void hideProcessWindow(QProcess& process) {
+  process.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments* args) {
+    args->flags |= CREATE_NO_WINDOW;
+  });
+}
+#else
+void hideProcessWindow(QProcess&) {}
+#endif
+
 namespace {
 
 QString firstLine(const QString& text) {
@@ -32,6 +42,7 @@ QString firstLine(const QString& text) {
 
 QString runWhereCommand(const QString& executable) {
   QProcess process;
+  hideProcessWindow(process);
   process.start(QStringLiteral("where"), { executable });
   if (!process.waitForFinished(5000) || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
     return QString();
@@ -78,51 +89,77 @@ QString moduleDirectory() {
 }  // namespace
 
 QString YouTubeService::resolveYtDlpPath(QString* errorMessage) const {
+  if (ytDlpPathCached_) {
+    if (errorMessage && cachedYtDlpPath_.isEmpty()) {
+      *errorMessage = QStringLiteral("yt-dlp.exe is missing from the packaged dashboard files.");
+    }
+    return cachedYtDlpPath_;
+  }
+
   const QStringList bundledCandidates = {
     QDir(moduleDirectory()).filePath(QStringLiteral("yt-dlp.exe")),
     QDir(moduleDirectory()).filePath(QStringLiteral("rp_soundboard_ultimate/yt-dlp.exe"))
   };
   for (const QString& bundledPath : bundledCandidates) {
     if (QFileInfo::exists(bundledPath)) {
+      cachedYtDlpPath_ = bundledPath;
+      ytDlpPathCached_ = true;
       return bundledPath;
     }
   }
 
   const QString pathTool = runWhereCommand(QStringLiteral("yt-dlp"));
   if (!pathTool.isEmpty()) {
+    cachedYtDlpPath_ = pathTool;
+    ytDlpPathCached_ = true;
     return pathTool;
   }
 
   if (errorMessage) {
     *errorMessage = QStringLiteral("yt-dlp.exe is missing from the packaged dashboard files.");
   }
+  ytDlpPathCached_ = true;
   return QString();
 }
 
 QString YouTubeService::resolveFfmpegPath(QString* errorMessage) const {
+  if (ffmpegPathCached_) {
+    if (errorMessage && cachedFfmpegPath_.isEmpty()) {
+      *errorMessage = QStringLiteral("ffmpeg.exe was not found. Install FFmpeg or add it to PATH.");
+    }
+    return cachedFfmpegPath_;
+  }
+
   const QStringList bundledCandidates = {
     QDir(moduleDirectory()).filePath(QStringLiteral("ffmpeg.exe")),
     QDir(moduleDirectory()).filePath(QStringLiteral("rp_soundboard_ultimate/ffmpeg.exe"))
   };
   for (const QString& bundledPath : bundledCandidates) {
     if (QFileInfo::exists(bundledPath)) {
+      cachedFfmpegPath_ = bundledPath;
+      ffmpegPathCached_ = true;
       return bundledPath;
     }
   }
 
   const QString localPath = runWhereCommand(QStringLiteral("ffmpeg"));
   if (!localPath.isEmpty()) {
+    cachedFfmpegPath_ = localPath;
+    ffmpegPathCached_ = true;
     return localPath;
   }
 
   const QString wingetPath = findWingetTool(QStringLiteral("ffmpeg.exe"));
   if (!wingetPath.isEmpty()) {
+    cachedFfmpegPath_ = wingetPath;
+    ffmpegPathCached_ = true;
     return wingetPath;
   }
 
   if (errorMessage) {
     *errorMessage = QStringLiteral("ffmpeg.exe was not found. Install FFmpeg or add it to PATH.");
   }
+  ffmpegPathCached_ = true;
   return QString();
 }
 
@@ -138,6 +175,7 @@ QVector<YouTubeSearchResult> YouTubeService::search(const QString& query, int li
   }
 
   QProcess process;
+  hideProcessWindow(process);
   process.start(
     ytDlpPath,
     {
@@ -227,6 +265,7 @@ bool YouTubeService::downloadAudio(
   const QString outputTemplate = QDir(soundsDir).filePath(QFileInfo(desiredFilename).completeBaseName() + QStringLiteral(".%(ext)s"));
 
   QProcess process;
+  hideProcessWindow(process);
   process.setWorkingDirectory(soundsDir);
   // Merge stderr into stdout so we drain a single pipe; yt-dlp's stderr can
   // otherwise fill and block the child process on Windows (silent hang).
@@ -375,6 +414,7 @@ bool YouTubeService::downloadPreviewAudio(
   QFile::remove(absolutePreviewPath);
 
   QProcess process;
+  hideProcessWindow(process);
   process.setWorkingDirectory(previewDir);
   // Merge channels so we drain a single pipe and avoid stderr deadlocks.
   process.setProcessChannelMode(QProcess::MergedChannels);
