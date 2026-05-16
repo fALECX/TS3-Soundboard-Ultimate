@@ -1105,8 +1105,11 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   // Preview bar
   previewBar_ = new QFrame(contentWidget);
   previewBar_->setObjectName(QStringLiteral("previewBar"));
-  auto* previewLayout = new QHBoxLayout(previewBar_);
-  previewLayout->setContentsMargins(14, 8, 14, 8);
+  auto* previewOuterLayout = new QVBoxLayout(previewBar_);
+  previewOuterLayout->setContentsMargins(14, 8, 14, 6);
+  previewOuterLayout->setSpacing(4);
+  auto* previewLayout = new QHBoxLayout();
+  previewLayout->setSpacing(4);
   liveIndicator_ = new QLabel(previewBar_);
   liveIndicator_->setFixedSize(12, 12);
   liveIndicator_->setStyleSheet(QStringLiteral("background-color: #ef4444; border-radius: 6px;"));
@@ -1136,6 +1139,55 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
     return QIcon(pm);
   };
 
+  // Pause/resume icon: two vertical bars (pause) or right-pointing triangle (resume)
+  // inside a green circle. The 'showResume' flag selects which symbol to draw.
+  auto makePauseIcon = [](int size, bool enabled, bool showResume) {
+    QPixmap pm(size, size);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const QColor bg = enabled ? QColor("#22c55e") : QColor(160, 160, 160, 80);
+    const QColor fg = enabled ? QColor(Qt::white)  : QColor(255, 255, 255, 160);
+    p.setPen(Qt::NoPen);
+    p.setBrush(bg);
+    p.drawEllipse(QRectF(0.5, 0.5, size - 1.0, size - 1.0));
+    p.setBrush(fg);
+    if (showResume) {
+      const double m = size * 0.28;
+      const double off = size * 0.04;
+      QPainterPath path;
+      path.moveTo(m + off, m);
+      path.lineTo(size - m + off, size / 2.0);
+      path.lineTo(m + off, size - m);
+      path.closeSubpath();
+      p.drawPath(path);
+    } else {
+      const double barW = size * 0.13;
+      const double barH = size * 0.38;
+      const double barY = (size - barH) / 2.0;
+      const double gap  = size * 0.08;
+      const double totalW = 2.0 * barW + gap;
+      const double startX = (size - totalW) / 2.0;
+      const double r = barW * 0.3;
+      p.drawRoundedRect(QRectF(startX, barY, barW, barH), r, r);
+      p.drawRoundedRect(QRectF(startX + barW + gap, barY, barW, barH), r, r);
+    }
+    return QIcon(pm);
+  };
+
+  pausePreviewButton_ = new QPushButton(previewBar_);
+  pausePreviewButton_->setObjectName(QStringLiteral("pausePreviewButton"));
+  pausePreviewButton_->setEnabled(false);
+  pausePreviewButton_->setFixedSize(32, 32);
+  pausePreviewButton_->setIconSize(QSize(28, 28));
+  pausePreviewButton_->setCursor(Qt::PointingHandCursor);
+  pausePreviewButton_->setToolTip(QStringLiteral("Pause preview"));
+  pausePreviewButton_->setFlat(true);
+  pausePreviewButton_->setProperty("iconPause",    QVariant::fromValue(makePauseIcon(64, true,  false)));
+  pausePreviewButton_->setProperty("iconResume",   QVariant::fromValue(makePauseIcon(64, true,  true)));
+  pausePreviewButton_->setProperty("iconDisabled", QVariant::fromValue(makePauseIcon(64, false, false)));
+  pausePreviewButton_->setIcon(pausePreviewButton_->property("iconDisabled").value<QIcon>());
+
   stopPreviewButton_ = new QPushButton(previewBar_);
   stopPreviewButton_->setObjectName(QStringLiteral("stopPreviewButton"));
   stopPreviewButton_->setEnabled(false);
@@ -1151,7 +1203,19 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   previewLayout->addWidget(liveIndicator_);
   previewLayout->addSpacing(8);
   previewLayout->addWidget(previewLabel_, 1);
+  previewLayout->addWidget(pausePreviewButton_);
   previewLayout->addWidget(stopPreviewButton_);
+
+  progressSlider_ = new QSlider(Qt::Horizontal, previewBar_);
+  progressSlider_->setObjectName(QStringLiteral("progressSlider"));
+  progressSlider_->setEnabled(false);
+  progressSlider_->setRange(0, 0);
+  progressSlider_->setValue(0);
+  progressSlider_->setFixedHeight(16);
+  progressSlider_->setCursor(Qt::PointingHandCursor);
+
+  previewOuterLayout->addLayout(previewLayout);
+  previewOuterLayout->addWidget(progressSlider_);
   contentLayout->addWidget(previewBar_);
 
   // Sound grid + library
@@ -1388,6 +1452,16 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   connect(colsSpin_, qOverload<int>(&QSpinBox::valueChanged), this, [this](int cols) {
     if (!rebuildingUi_ && onActiveBoardSizeChanged) onActiveBoardSizeChanged(rowsSpin_->value(), cols);
   });
+  connect(progressSlider_, &QSlider::sliderPressed, this, [this]() {
+    sliderDragging_ = true;
+  });
+  connect(progressSlider_, &QSlider::sliderReleased, this, [this]() {
+    sliderDragging_ = false;
+    if (onSeekPreview) onSeekPreview(progressSlider_->value());
+  });
+  connect(pausePreviewButton_, &QPushButton::clicked, this, [this]() {
+    if (onPausePreview) onPausePreview();
+  });
   connect(stopPreviewButton_, &QPushButton::clicked, this, [this]() {
     if (onStopPreview) onStopPreview();
   });
@@ -1521,20 +1595,48 @@ const BoardRecord* MainWindow::activeBoard() const {
   return state_.boards.isEmpty() ? nullptr : &state_.boards.front();
 }
 
-void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool playing) {
+void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool playing, bool paused) {
   if (!playing || title.trimmed().isEmpty()) {
     previewLabel_->setText(QStringLiteral("Preview stopped"));
+    pausePreviewButton_->setEnabled(false);
+    pausePreviewButton_->setIcon(pausePreviewButton_->property("iconDisabled").value<QIcon>());
+    pausePreviewButton_->setToolTip(QStringLiteral("Pause preview"));
     stopPreviewButton_->setEnabled(false);
     stopPreviewButton_->setIcon(stopPreviewButton_->property("iconDisabled").value<QIcon>());
+    progressSlider_->setEnabled(false);
+    { QSignalBlocker b(progressSlider_); progressSlider_->setRange(0, 0); progressSlider_->setValue(0); }
     liveIndicator_->setVisible(false);
     return;
   }
-  previewLabel_->setText(
-    QStringLiteral("Playing: %1  [%2]").arg(title, formatDurationMs(durationMs))
-  );
+  if (paused) {
+    previewLabel_->setText(
+      QStringLiteral("Paused: %1  [%2]").arg(title, formatDurationMs(durationMs))
+    );
+    pausePreviewButton_->setIcon(pausePreviewButton_->property("iconResume").value<QIcon>());
+    pausePreviewButton_->setToolTip(QStringLiteral("Resume preview"));
+  } else {
+    previewLabel_->setText(
+      QStringLiteral("Playing: %1  [%2]").arg(title, formatDurationMs(durationMs))
+    );
+    pausePreviewButton_->setIcon(pausePreviewButton_->property("iconPause").value<QIcon>());
+    pausePreviewButton_->setToolTip(QStringLiteral("Pause preview"));
+  }
+  pausePreviewButton_->setEnabled(true);
   stopPreviewButton_->setIcon(stopPreviewButton_->property("iconEnabled").value<QIcon>());
   stopPreviewButton_->setEnabled(true);
-  liveIndicator_->setVisible(true);
+  if (durationMs > 0) {
+    QSignalBlocker b(progressSlider_);
+    progressSlider_->setRange(0, durationMs);
+    progressSlider_->setEnabled(true);
+  }
+  liveIndicator_->setVisible(!paused);
+}
+
+void MainWindow::updatePreviewProgress(int posMs) {
+  if (!sliderDragging_) {
+    QSignalBlocker b(progressSlider_);
+    progressSlider_->setValue(posMs);
+  }
 }
 
 void MainWindow::setSelectedCell(int cellIndex) {
