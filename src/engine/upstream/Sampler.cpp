@@ -232,8 +232,8 @@ void Sampler::stopSoundInternal() {
 
     SampleBuffer::Lock sblc(m_sbCapture.getMutex());
     SampleBuffer::Lock sblp(m_sbPlayback.getMutex());
-    m_sbCapture.consume(nullptr, m_sbCapture.avail());
-    m_sbPlayback.consume(nullptr, m_sbPlayback.avail());
+    m_sbCapture.consume(nullptr, m_sbCapture.avail(), true);
+    m_sbPlayback.consume(nullptr, m_sbPlayback.avail(), true);
 
     if (onStopPlaying) {
       onStopPlaying();
@@ -257,8 +257,8 @@ bool Sampler::playSoundInternal(const SoundInfo& sound, bool preview) {
 
   SampleBuffer::Lock sblc(m_sbCapture.getMutex());
   SampleBuffer::Lock sblp(m_sbPlayback.getMutex());
-  m_sbCapture.consume(nullptr, m_sbCapture.avail());
-  m_sbPlayback.consume(nullptr, m_sbPlayback.avail());
+  m_sbCapture.consume(nullptr, m_sbCapture.avail(), true);
+  m_sbPlayback.consume(nullptr, m_sbPlayback.avail(), true);
 
   if (preview) {
     m_state = ePLAYING_PREVIEW;
@@ -267,6 +267,7 @@ bool Sampler::playSoundInternal(const SoundInfo& sound, bool preview) {
   } else {
     m_state = ePLAYING;
     m_sampleProducerThread.setBufferEnabled(&m_sbCapture, true);
+    m_sampleProducerThread.setBufferEnabled(&m_sbPlayback, m_localPlayback);
   }
 
   m_sampleProducerThread.setSource(m_inputFile);

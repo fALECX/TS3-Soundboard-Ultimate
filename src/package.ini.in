@@ -3,4 +3,5 @@ Type = Plugin
 Author = fALECX
 Version = @RPSU_PACKAGE_VERSION@
 Platforms = win64
+APIVERSION = 26
 Description = Native TeamSpeak 3 soundboard plugin for RP Soundboard Ultimate.

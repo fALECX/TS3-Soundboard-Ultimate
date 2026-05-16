@@ -1,16 +1,12 @@
 #include "src/plugin.h"
 
 #include <QCoreApplication>
-#include <QFileInfo>
 #include <QString>
 #include <QStringList>
+#include <QWidget>
 
 #include <cstdlib>
 #include <cstring>
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 #include "src/plugin_context.h"
 
@@ -26,47 +22,6 @@ void logMessage(const char* text, LogLevel level = LogLevel_INFO) {
   if (ts3Functions.logMessage) {
     ts3Functions.logMessage(text, level, "RP Soundboard Ultimate", 0);
   }
-}
-
-// Resolve the directory containing the runtime .bin (this very DLL).
-QString runtimeSupportDir() {
-#ifdef _WIN32
-  wchar_t path[MAX_PATH] = {};
-  HMODULE mod = nullptr;
-  GetModuleHandleExW(
-    GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-    reinterpret_cast<LPCWSTR>(&runtimeSupportDir), &mod);
-  GetModuleFileNameW(mod, path, MAX_PATH);
-  return QFileInfo(QString::fromWCharArray(path)).absolutePath();
-#else
-  return QString{};
-#endif
-}
-
-// Launch the standalone dashboard .exe (Qt6 UI runs in its own process).
-// This avoids in-process Qt5 (TS3) vs Qt6 (us) QApplication conflicts.
-void launchDashboard() {
-#ifdef _WIN32
-  const QString exePath = runtimeSupportDir() + QStringLiteral("/rpsu_ui_preview.exe");
-  if (!QFileInfo::exists(exePath)) {
-    logMessage("Dashboard launch failed: rpsu_ui_preview.exe not found", LogLevel_ERROR);
-    return;
-  }
-
-  std::wstring wExe = exePath.toStdWString();
-  std::wstring wDir = runtimeSupportDir().toStdWString();
-
-  STARTUPINFOW si{};
-  si.cb = sizeof(si);
-  PROCESS_INFORMATION pi{};
-  if (!CreateProcessW(wExe.c_str(), nullptr, nullptr, nullptr, FALSE,
-                      DETACHED_PROCESS, nullptr, wDir.c_str(), &si, &pi)) {
-    logMessage("Dashboard launch failed: CreateProcessW returned 0", LogLevel_ERROR);
-    return;
-  }
-  CloseHandle(pi.hThread);
-  CloseHandle(pi.hProcess);
-#endif
 }
 
 PluginMenuItem* createMenuItem(enum PluginMenuType type, int id, const char* text) {
@@ -139,13 +94,12 @@ void ts3plugin_shutdown() {
 }
 
 int ts3plugin_offersConfigure() {
-  return PLUGIN_OFFERS_CONFIGURE_NEW_THREAD;
+  return PLUGIN_OFFERS_CONFIGURE_QT_THREAD;
 }
 
 void ts3plugin_configure(void* handle, void* qParentWidget) {
   Q_UNUSED(handle);
-  Q_UNUSED(qParentWidget);
-  launchDashboard();
+  rpsu::PluginContext::instance().showWindow(static_cast<QWidget*>(qParentWidget));
 }
 
 void ts3plugin_registerPluginID(const char* id) {
@@ -166,7 +120,7 @@ int ts3plugin_processCommand(uint64 serverConnectionHandlerID, const char* comma
   Q_UNUSED(serverConnectionHandlerID);
   const QString text = QString::fromUtf8(command ? command : "");
   if (text == QStringLiteral("show") || text == QStringLiteral("reload")) {
-    launchDashboard();
+    rpsu::PluginContext::instance().showWindow();
     return 0;
   }
   return 1;
@@ -201,7 +155,7 @@ void ts3plugin_onMenuItemEvent(uint64 serverConnectionHandlerID, enum PluginMenu
   Q_UNUSED(type);
   Q_UNUSED(selectedItemID);
   if (menuItemID == kMenuOpenWindow) {
-    launchDashboard();
+    rpsu::PluginContext::instance().showWindow();
   }
 }
 
@@ -232,7 +186,6 @@ void ts3plugin_onTalkStatusChangeEvent(uint64 serverConnectionHandlerID, int sta
 }
 
 void ts3plugin_onHotkeyEvent(const char* keyword) {
-  // Reload state from disk so hotkeys reflect changes made in the external UI.
   rpsu::PluginContext::instance().reloadState();
   rpsu::PluginContext::instance().playHotkey(QString::fromUtf8(keyword ? keyword : ""));
 }
