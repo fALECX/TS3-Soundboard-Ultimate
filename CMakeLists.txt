@@ -4,6 +4,12 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 project(rp_soundboard_ultimate_ts3_plugin VERSION 0.4.0 LANGUAGES C CXX)
 
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/src/version.h"
+  @ONLY
+)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -36,6 +42,7 @@ set(PLUGIN_RUNTIME_SOURCES
   src/core/models.cpp
   src/core/storage.cpp
   src/core/youtube_service.cpp
+  src/core/update_checker.cpp
   src/engine/playback_engine.cpp
   src/engine/upstream/SampleBuffer.cpp
   src/engine/upstream/SampleProducerThread.cpp
@@ -58,6 +65,7 @@ set(HEADERS
   src/core/models.h
   src/core/storage.h
   src/core/youtube_service.h
+  src/core/update_checker.h
   src/engine/playback_engine.h
   src/engine/upstream/SampleBuffer.h
   src/engine/upstream/SampleProducer.h
@@ -84,6 +92,7 @@ target_include_directories(${PLUGIN_NAME}
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/pluginsdk/include
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 target_compile_definitions(${PLUGIN_NAME}
@@ -113,6 +122,7 @@ target_include_directories(${PLUGIN_RUNTIME_NAME}
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/pluginsdk/include
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 target_link_libraries(${PLUGIN_RUNTIME_NAME}
@@ -147,6 +157,7 @@ add_executable(rpsu_ui_preview
   src/core/models.cpp
   src/core/storage.cpp
   src/core/youtube_service.cpp
+  src/core/update_checker.cpp
   src/engine/playback_engine.cpp
   src/engine/upstream/SampleBuffer.cpp
   src/engine/upstream/SampleProducerThread.cpp
@@ -186,6 +197,7 @@ target_include_directories(rpsu_ui_preview
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/pluginsdk/include
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 target_link_libraries(rpsu_ui_preview

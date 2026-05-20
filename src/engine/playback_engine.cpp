@@ -19,7 +19,7 @@ void runtimeLog(const QString& text) {
 
 PlaybackEngine::PlaybackEngine() {
   sampler_.onStartPlaying = [this](bool, const QString& filename) {
-    updatePreviewStatus(QFileInfo(filename).completeBaseName(), 0, true);
+    updatePreviewStatus(QFileInfo(filename).completeBaseName(), sampler_.getDurationMs(), true);
     talkStateManager_.onStartPlaying(false, filename);
   };
   sampler_.onStopPlaying = [this]() {
@@ -79,6 +79,18 @@ bool PlaybackEngine::isPaused() const {
 bool PlaybackEngine::isActive() const {
   const auto state = sampler_.getState();
   return state == Sampler::ePLAYING || state == Sampler::ePAUSED || state == Sampler::ePLAYING_PREVIEW;
+}
+
+int PlaybackEngine::getDurationMs() const {
+  return sampler_.getDurationMs();
+}
+
+int PlaybackEngine::getPositionMs() const {
+  return sampler_.getPositionMs();
+}
+
+bool PlaybackEngine::seekTo(int posMs) {
+  return sampler_.seekTo(posMs);
 }
 
 SoundInfo PlaybackEngine::toSoundInfo(const SoundRecord& sound, const QString& soundsDir) const {

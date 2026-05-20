@@ -35,6 +35,7 @@ class MainWindow : public QWidget {
   int selectedCellIndex() const { return selectedCellIndex_; }
   void setPreviewStatus(const QString& title, int durationMs, bool playing, bool paused = false);
   void updatePreviewProgress(int posMs);
+  void showUpdateBanner(const QString& version, const QString& url);
 
   std::function<void(const QString& boardId)> onBoardSelected;
   std::function<void(const QString& name, int rows, int cols)> onCreateBoard;
@@ -61,6 +62,11 @@ class MainWindow : public QWidget {
   std::function<void(const QString& boardId)> onDeleteBoard;
   std::function<void(const QString& boardId, const QString& newName)> onRenameBoard;
   std::function<void(const QString& soundId)> onDeleteSound;
+
+  // Fired whenever preview status or position changes — used by the YouTube
+  // dialog to mirror the preview bar without polling.
+  std::function<void(const QString& title, int durationMs, bool playing, bool paused)> onPreviewStatusChanged;
+  std::function<void(int posMs)> onPreviewProgressChanged;
 
  private:
   void rebuild();
@@ -90,6 +96,7 @@ class MainWindow : public QWidget {
   QLineEdit* librarySearch_ = nullptr;
   QComboBox* librarySortCombo_ = nullptr;
   QLabel* statusLabel_ = nullptr;
+  QPushButton* dismissUpdateButton_ = nullptr;
   QFrame* previewBar_ = nullptr;
   QLabel* previewLabel_ = nullptr;
   QLabel* liveIndicator_ = nullptr;

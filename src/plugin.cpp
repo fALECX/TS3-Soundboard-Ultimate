@@ -1,5 +1,7 @@
 #include "src/plugin.h"
 
+#include "src/version.h"
+
 #include <QCoreApplication>
 #include <QString>
 #include <QStringList>
@@ -59,7 +61,7 @@ const char* ts3plugin_name() {
 }
 
 const char* ts3plugin_version() {
-  return "0.3.0";
+  return RPSU_VERSION_STRING;
 }
 
 int ts3plugin_apiVersion() {

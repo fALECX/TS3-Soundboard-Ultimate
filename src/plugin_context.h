@@ -14,9 +14,11 @@
 #include "pluginsdk/include/ts3_functions.h"
 #include "src/audio/preview_player.h"
 #include "src/core/storage.h"
+#include "src/core/update_checker.h"
 #include "src/engine/playback_engine.h"
 #include "src/core/youtube_service.h"
 #include "src/ui/main_window.h"
+#include "src/version.h"
 
 #ifdef RPSU_ENABLE_TS3_ROUTING
 #include "src/plugin.h"
@@ -40,12 +42,26 @@ class PluginContext {
       if (playing) {
         currentPreviewTitle_ = title;
         currentPreviewDurationMs_ = durationMs;
+        if (positionPollTimer_) positionPollTimer_->start();
+      } else {
+        if (positionPollTimer_) positionPollTimer_->stop();
       }
       updatePreviewUi(title, durationMs, playing);
     };
     playbackEngine_.initialize();
     applyRuntimeConfig();
     storage_.saveState(state_);
+
+    QObject::connect(&updateChecker_, &UpdateChecker::updateAvailable,
+      [this](const QString& latestVersion, const QString& releaseUrl) {
+        pendingUpdateVersion_ = latestVersion;
+        pendingUpdateUrl_ = releaseUrl;
+        if (window_) {
+          window_->showUpdateBanner(pendingUpdateVersion_, pendingUpdateUrl_);
+        }
+      });
+    updateChecker_.checkAsync(QString::fromLatin1(RPSU_VERSION_STRING));
+
     return true;
   }
 
@@ -163,6 +179,10 @@ class PluginContext {
     window_->show();
     window_->raise();
     window_->activateWindow();
+
+    if (!pendingUpdateVersion_.isEmpty()) {
+      window_->showUpdateBanner(pendingUpdateVersion_, pendingUpdateUrl_);
+    }
   }
 
   void refreshWindow() {
@@ -292,7 +312,11 @@ class PluginContext {
     positionPollTimer_ = new QTimer();
     positionPollTimer_->setInterval(50);
     QObject::connect(positionPollTimer_, &QTimer::timeout, [this]() {
-      if (window_ && preview_.isActive()) {
+      if (!window_) return;
+      if (playbackEngine_.isActive()) {
+        const int pos = playbackEngine_.getPositionMs();
+        if (pos >= 0) window_->updatePreviewProgress(pos);
+      } else if (preview_.isActive()) {
         const int pos = preview_.currentPositionMs();
         if (pos >= 0) window_->updatePreviewProgress(pos);
       }
@@ -349,7 +373,12 @@ class PluginContext {
   }
 
   void seekPreview(int posMs) {
-    if (preview_.seekTo(posMs)) {
+    if (playbackEngine_.isActive()) {
+      if (playbackEngine_.seekTo(posMs)) {
+        if (positionPollTimer_) positionPollTimer_->start();
+        if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, false);
+      }
+    } else if (preview_.seekTo(posMs)) {
       if (positionPollTimer_) positionPollTimer_->start();
       if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, false);
     }
@@ -551,11 +580,13 @@ class PluginContext {
     sound.sourceUrl = result.url;
     sound.tags = QStringList{ QStringLiteral("youtube") };
     storage_.refreshSoundMetadata(sound);
-    state_.library.push_back(sound);
-    storage_.saveState(state_);
-    // refreshWindow() touches Qt widgets — must run on the main thread.
-    // Post it there; the event pump in runWithLoading will pick it up.
-    QTimer::singleShot(0, window_, [this]() { refreshWindow(); });
+    // All state_ writes and Qt widget calls must happen on the main thread.
+    // Capture sound by value so the bg thread doesn't race with state_.library.
+    QTimer::singleShot(0, window_, [this, sound]() {
+      state_.library.push_back(sound);
+      storage_.saveState(state_);
+      refreshWindow();
+    });
     return sound.soundId;
   }
 
@@ -623,12 +654,15 @@ class PluginContext {
   PlaybackEngine playbackEngine_;
   PreviewPlayer preview_;
   YouTubeService youtube_;
+  UpdateChecker updateChecker_;
   MainWindow* window_ = nullptr;
   QTimer* previewClearTimer_ = nullptr;
   QTimer* positionPollTimer_ = nullptr;
   QString lastPreviewPath_;
   QString currentPreviewTitle_;
   int currentPreviewDurationMs_ = 0;
+  QString pendingUpdateVersion_;
+  QString pendingUpdateUrl_;
 };
 
 }  // namespace rpsu

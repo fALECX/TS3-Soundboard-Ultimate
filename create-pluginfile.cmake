@@ -13,7 +13,7 @@ else()
 endif()
 
 if(NOT packageVersion)
-    set(packageVersion "0.3.0")
+    message(FATAL_ERROR "Could not determine plugin package version.")
 endif()
 
 file(MAKE_DIRECTORY "${RPSU_PLUGINFILE_OUTPUT_DIR}")

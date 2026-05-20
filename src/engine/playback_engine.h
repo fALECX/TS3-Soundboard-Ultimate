@@ -32,6 +32,9 @@ class PlaybackEngine {
   void resumePlayback();
   bool isPaused() const;
   bool isActive() const;
+  int getDurationMs() const;
+  int getPositionMs() const;
+  bool seekTo(int posMs);
 
   bool mixCaptured(uint64 serverConnectionHandlerID, short* samples, int sampleCount, int channels);
   void mixPlayback(uint64 serverConnectionHandlerID, short* samples, int sampleCount, int channels, const unsigned int* channelSpeakerArray, unsigned int* channelFillMask);

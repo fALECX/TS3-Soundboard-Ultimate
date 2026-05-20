@@ -312,6 +312,59 @@ QString emojiFromUtf8(const char* value) {
   return QString::fromUtf8(value);
 }
 
+QIcon makeStopIconFn(int size, bool enabled) {
+  QPixmap pm(size, size);
+  pm.fill(Qt::transparent);
+  QPainter p(&pm);
+  p.setRenderHint(QPainter::Antialiasing, true);
+  const QColor bg     = enabled ? QColor("#ef4444") : QColor(160, 160, 160, 80);
+  const QColor square = enabled ? QColor(Qt::white)  : QColor(255, 255, 255, 160);
+  p.setPen(Qt::NoPen);
+  p.setBrush(bg);
+  p.drawEllipse(QRectF(0.5, 0.5, size - 1.0, size - 1.0));
+  const double s = size * 0.38;
+  const double x = (size - s) / 2.0;
+  p.setBrush(square);
+  QPainterPath path;
+  path.addRoundedRect(QRectF(x, x, s, s), s * 0.18, s * 0.18);
+  p.drawPath(path);
+  return QIcon(pm);
+}
+
+QIcon makePauseIconFn(int size, bool enabled, bool showResume) {
+  QPixmap pm(size, size);
+  pm.fill(Qt::transparent);
+  QPainter p(&pm);
+  p.setRenderHint(QPainter::Antialiasing, true);
+  const QColor bg = enabled ? QColor("#22c55e") : QColor(160, 160, 160, 80);
+  const QColor fg = enabled ? QColor(Qt::white)  : QColor(255, 255, 255, 160);
+  p.setPen(Qt::NoPen);
+  p.setBrush(bg);
+  p.drawEllipse(QRectF(0.5, 0.5, size - 1.0, size - 1.0));
+  p.setBrush(fg);
+  if (showResume) {
+    const double m = size * 0.28;
+    const double off = size * 0.04;
+    QPainterPath path2;
+    path2.moveTo(m + off, m);
+    path2.lineTo(size - m + off, size / 2.0);
+    path2.lineTo(m + off, size - m);
+    path2.closeSubpath();
+    p.drawPath(path2);
+  } else {
+    const double barW = size * 0.13;
+    const double barH = size * 0.38;
+    const double barY = (size - barH) / 2.0;
+    const double gap  = size * 0.08;
+    const double totalW = 2.0 * barW + gap;
+    const double startX = (size - totalW) / 2.0;
+    const double r = barW * 0.3;
+    p.drawRoundedRect(QRectF(startX, barY, barW, barH), r, r);
+    p.drawRoundedRect(QRectF(startX + barW + gap, barY, barW, barH), r, r);
+  }
+  return QIcon(pm);
+}
+
 
 class YouTubeSearchDialog : public QDialog {
  public:
@@ -409,6 +462,93 @@ class YouTubeSearchDialog : public QDialog {
     resultsTable_->setColumnWidth(3, 110);
     resultsTable_->setStyleSheet(tableItemStyleSheet(t));
     root->addWidget(resultsTable_, 1);
+
+    // Preview bar — mirrors the main window's preview bar
+    auto* dlgPreviewBar = new QFrame(this);
+    dlgPreviewBar->setObjectName(QStringLiteral("dlgPreviewBar"));
+    dlgPreviewBar->setStyleSheet(QStringLiteral(
+      "QFrame#dlgPreviewBar { background: %1; border: 1px solid %2; border-radius: 10px; }"
+    ).arg(t.surfaceBg, t.surfaceBorder));
+    auto* dlgPreviewOuter = new QVBoxLayout(dlgPreviewBar);
+    dlgPreviewOuter->setContentsMargins(14, 8, 14, 6);
+    dlgPreviewOuter->setSpacing(4);
+
+    auto* dlgPreviewRow = new QHBoxLayout();
+    dlgPreviewRow->setSpacing(6);
+
+    dlgLiveIndicator_ = new QLabel(dlgPreviewBar);
+    dlgLiveIndicator_->setFixedSize(12, 12);
+    dlgLiveIndicator_->setStyleSheet(QStringLiteral("background-color: #ef4444; border-radius: 6px;"));
+    dlgLiveIndicator_->setVisible(false);
+
+    dlgPreviewLabel_ = new QLabel(QStringLiteral("Preview stopped"), dlgPreviewBar);
+    dlgPreviewLabel_->setStyleSheet(QStringLiteral("color: %1; font-size: 13px;").arg(t.textPrimary));
+
+    dlgPauseButton_ = new QPushButton(dlgPreviewBar);
+    dlgPauseButton_->setFixedSize(32, 32);
+    dlgPauseButton_->setIconSize(QSize(28, 28));
+    dlgPauseButton_->setCursor(Qt::PointingHandCursor);
+    dlgPauseButton_->setToolTip(QStringLiteral("Pause"));
+    dlgPauseButton_->setFlat(true);
+    dlgPauseButton_->setEnabled(false);
+    dlgPauseButton_->setProperty("iconPause",    QVariant::fromValue(makePauseIconFn(64, true,  false)));
+    dlgPauseButton_->setProperty("iconDisabled", QVariant::fromValue(makePauseIconFn(64, false, false)));
+    dlgPauseButton_->setIcon(dlgPauseButton_->property("iconDisabled").value<QIcon>());
+
+    dlgResumeButton_ = new QPushButton(dlgPreviewBar);
+    dlgResumeButton_->setFixedSize(32, 32);
+    dlgResumeButton_->setIconSize(QSize(28, 28));
+    dlgResumeButton_->setCursor(Qt::PointingHandCursor);
+    dlgResumeButton_->setToolTip(QStringLiteral("Continue"));
+    dlgResumeButton_->setFlat(true);
+    dlgResumeButton_->setEnabled(false);
+    dlgResumeButton_->setProperty("iconResume",   QVariant::fromValue(makePauseIconFn(64, true,  true)));
+    dlgResumeButton_->setProperty("iconDisabled", QVariant::fromValue(makePauseIconFn(64, false, true)));
+    dlgResumeButton_->setIcon(dlgResumeButton_->property("iconDisabled").value<QIcon>());
+
+    dlgStopButton_ = new QPushButton(dlgPreviewBar);
+    dlgStopButton_->setFixedSize(32, 32);
+    dlgStopButton_->setIconSize(QSize(28, 28));
+    dlgStopButton_->setCursor(Qt::PointingHandCursor);
+    dlgStopButton_->setToolTip(QStringLiteral("Stop preview"));
+    dlgStopButton_->setFlat(true);
+    dlgStopButton_->setEnabled(false);
+    dlgStopButton_->setProperty("iconEnabled",  QVariant::fromValue(makeStopIconFn(64, true)));
+    dlgStopButton_->setProperty("iconDisabled", QVariant::fromValue(makeStopIconFn(64, false)));
+    dlgStopButton_->setIcon(dlgStopButton_->property("iconDisabled").value<QIcon>());
+
+    dlgPreviewRow->addWidget(dlgLiveIndicator_);
+    dlgPreviewRow->addSpacing(4);
+    dlgPreviewRow->addWidget(dlgPreviewLabel_, 1);
+    dlgPreviewRow->addWidget(dlgPauseButton_);
+    dlgPreviewRow->addWidget(dlgResumeButton_);
+    dlgPreviewRow->addWidget(dlgStopButton_);
+
+    dlgProgressSlider_ = new QSlider(Qt::Horizontal, dlgPreviewBar);
+    dlgProgressSlider_->setEnabled(false);
+    dlgProgressSlider_->setRange(0, 0);
+    dlgProgressSlider_->setValue(0);
+    dlgProgressSlider_->setFixedHeight(16);
+    dlgProgressSlider_->setCursor(Qt::PointingHandCursor);
+
+    dlgPreviewOuter->addLayout(dlgPreviewRow);
+    dlgPreviewOuter->addWidget(dlgProgressSlider_);
+    root->addWidget(dlgPreviewBar);
+
+    connect(dlgPauseButton_,  &QPushButton::clicked, this, [this]() {
+      if (owner_->onPausePreview) owner_->onPausePreview();
+    });
+    connect(dlgResumeButton_, &QPushButton::clicked, this, [this]() {
+      if (owner_->onPausePreview) owner_->onPausePreview();
+    });
+    connect(dlgStopButton_,   &QPushButton::clicked, this, [this]() {
+      if (owner_->onStopPreview) owner_->onStopPreview();
+    });
+    connect(dlgProgressSlider_, &QSlider::sliderPressed,  this, [this]() { dlgSliderDragging_ = true; });
+    connect(dlgProgressSlider_, &QSlider::sliderReleased, this, [this]() {
+      dlgSliderDragging_ = false;
+      if (owner_->onSeekPreview) owner_->onSeekPreview(dlgProgressSlider_->value());
+    });
 
     // Bottom buttons
     auto* buttons   = new QHBoxLayout();
@@ -748,6 +888,56 @@ class YouTubeSearchDialog : public QDialog {
     accept();
   }
 
+ public:
+  void updatePreviewProgress(int posMs) {
+    if (!dlgSliderDragging_) {
+      QSignalBlocker b(dlgProgressSlider_);
+      dlgProgressSlider_->setValue(posMs);
+    }
+  }
+
+  void updatePreviewBar(const QString& title, int durationMs, bool playing, bool paused) {
+    if (!playing) {
+      dlgPreviewLabel_->setText(QStringLiteral("Preview stopped"));
+      dlgPauseButton_->setEnabled(false);
+      dlgPauseButton_->setIcon(dlgPauseButton_->property("iconDisabled").value<QIcon>());
+      dlgResumeButton_->setEnabled(false);
+      dlgResumeButton_->setIcon(dlgResumeButton_->property("iconDisabled").value<QIcon>());
+      dlgStopButton_->setEnabled(false);
+      dlgStopButton_->setIcon(dlgStopButton_->property("iconDisabled").value<QIcon>());
+      dlgProgressSlider_->setEnabled(false);
+      { QSignalBlocker b(dlgProgressSlider_); dlgProgressSlider_->setRange(0, 0); dlgProgressSlider_->setValue(0); }
+      dlgLiveIndicator_->setVisible(false);
+      return;
+    }
+    if (paused) {
+      dlgPreviewLabel_->setText(
+        QStringLiteral("Paused: %1  [%2]").arg(title, formatDurationMs(durationMs))
+      );
+      dlgPauseButton_->setEnabled(false);
+      dlgPauseButton_->setIcon(dlgPauseButton_->property("iconDisabled").value<QIcon>());
+      dlgResumeButton_->setEnabled(true);
+      dlgResumeButton_->setIcon(dlgResumeButton_->property("iconResume").value<QIcon>());
+    } else {
+      dlgPreviewLabel_->setText(
+        QStringLiteral("Playing: %1  [%2]").arg(title, formatDurationMs(durationMs))
+      );
+      dlgPauseButton_->setEnabled(true);
+      dlgPauseButton_->setIcon(dlgPauseButton_->property("iconPause").value<QIcon>());
+      dlgResumeButton_->setEnabled(false);
+      dlgResumeButton_->setIcon(dlgResumeButton_->property("iconDisabled").value<QIcon>());
+    }
+    dlgStopButton_->setEnabled(true);
+    dlgStopButton_->setIcon(dlgStopButton_->property("iconEnabled").value<QIcon>());
+    if (durationMs > 0) {
+      QSignalBlocker b(dlgProgressSlider_);
+      dlgProgressSlider_->setRange(0, durationMs);
+      dlgProgressSlider_->setEnabled(true);
+    }
+    dlgLiveIndicator_->setVisible(!paused);
+  }
+
+ private:
   MainWindow*   owner_;
   bool          darkMode_;
   QLineEdit*    queryEdit_      = nullptr;
@@ -760,6 +950,13 @@ class YouTubeSearchDialog : public QDialog {
   QPushButton*  downloadButton_ = nullptr;
   QPushButton*  closeButton_    = nullptr;
   QPushButton*  cancelButton_   = nullptr;
+  QLabel*       dlgPreviewLabel_   = nullptr;
+  QLabel*       dlgLiveIndicator_  = nullptr;
+  QPushButton*  dlgPauseButton_    = nullptr;
+  QPushButton*  dlgResumeButton_   = nullptr;
+  QPushButton*  dlgStopButton_     = nullptr;
+  QSlider*      dlgProgressSlider_ = nullptr;
+  bool          dlgSliderDragging_ = false;
   bool          busy_           = false;
   int           loadingTick_    = 0;
   QString       lastQuery_;
@@ -1093,7 +1290,11 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
     statusFrame
   );
   statusLabel_->setObjectName(QStringLiteral("statusLabel"));
-  statusLayout->addWidget(statusLabel_);
+  statusLayout->addWidget(statusLabel_, 1);
+  dismissUpdateButton_ = new QPushButton(QStringLiteral("Dismiss"), statusFrame);
+  dismissUpdateButton_->setObjectName(QStringLiteral("dismissUpdateButton"));
+  dismissUpdateButton_->setVisible(false);
+  statusLayout->addWidget(dismissUpdateButton_);
   root->addWidget(statusFrame);
 
   // ── Main content ─────────────────────────────────────────────────────────
@@ -1179,62 +1380,8 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   previewLabel_->setObjectName(QStringLiteral("previewLabel"));
   // Hand-drawn stop icon (white rounded square inside a soft red circle).
   // Renders crisp at any DPI; no external assets needed.
-  auto makeStopIcon = [](int size, bool enabled) {
-    QPixmap pm(size, size);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing, true);
-    const QColor bg     = enabled ? QColor("#ef4444") : QColor(160, 160, 160, 80);
-    const QColor square = enabled ? QColor(Qt::white)  : QColor(255, 255, 255, 160);
-    // Background disc
-    p.setPen(Qt::NoPen);
-    p.setBrush(bg);
-    p.drawEllipse(QRectF(0.5, 0.5, size - 1.0, size - 1.0));
-    // Rounded stop square, ~38% of icon size, centered
-    const double s = size * 0.38;
-    const double x = (size - s) / 2.0;
-    p.setBrush(square);
-    QPainterPath path;
-    path.addRoundedRect(QRectF(x, x, s, s), s * 0.18, s * 0.18);
-    p.drawPath(path);
-    return QIcon(pm);
-  };
-
-  // Pause/resume icon: two vertical bars (pause) or right-pointing triangle (resume)
-  // inside a green circle. The 'showResume' flag selects which symbol to draw.
-  auto makePauseIcon = [](int size, bool enabled, bool showResume) {
-    QPixmap pm(size, size);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing, true);
-    const QColor bg = enabled ? QColor("#22c55e") : QColor(160, 160, 160, 80);
-    const QColor fg = enabled ? QColor(Qt::white)  : QColor(255, 255, 255, 160);
-    p.setPen(Qt::NoPen);
-    p.setBrush(bg);
-    p.drawEllipse(QRectF(0.5, 0.5, size - 1.0, size - 1.0));
-    p.setBrush(fg);
-    if (showResume) {
-      const double m = size * 0.28;
-      const double off = size * 0.04;
-      QPainterPath path;
-      path.moveTo(m + off, m);
-      path.lineTo(size - m + off, size / 2.0);
-      path.lineTo(m + off, size - m);
-      path.closeSubpath();
-      p.drawPath(path);
-    } else {
-      const double barW = size * 0.13;
-      const double barH = size * 0.38;
-      const double barY = (size - barH) / 2.0;
-      const double gap  = size * 0.08;
-      const double totalW = 2.0 * barW + gap;
-      const double startX = (size - totalW) / 2.0;
-      const double r = barW * 0.3;
-      p.drawRoundedRect(QRectF(startX, barY, barW, barH), r, r);
-      p.drawRoundedRect(QRectF(startX + barW + gap, barY, barW, barH), r, r);
-    }
-    return QIcon(pm);
-  };
+  auto makeStopIcon  = [](int size, bool enabled)              { return makeStopIconFn(size, enabled); };
+  auto makePauseIcon = [](int size, bool enabled, bool resume) { return makePauseIconFn(size, enabled, resume); };
 
   pausePreviewButton_ = new QPushButton(previewBar_);
   pausePreviewButton_->setObjectName(QStringLiteral("pausePreviewButton"));
@@ -1683,6 +1830,7 @@ void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool pla
     progressSlider_->setEnabled(false);
     { QSignalBlocker b(progressSlider_); progressSlider_->setRange(0, 0); progressSlider_->setValue(0); }
     liveIndicator_->setVisible(false);
+    if (onPreviewStatusChanged) onPreviewStatusChanged(QString(), 0, false, false);
     return;
   }
   if (paused) {
@@ -1710,6 +1858,7 @@ void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool pla
     progressSlider_->setEnabled(true);
   }
   liveIndicator_->setVisible(!paused);
+  if (onPreviewStatusChanged) onPreviewStatusChanged(title, durationMs, playing, paused);
 }
 
 void MainWindow::updatePreviewProgress(int posMs) {
@@ -1717,6 +1866,26 @@ void MainWindow::updatePreviewProgress(int posMs) {
     QSignalBlocker b(progressSlider_);
     progressSlider_->setValue(posMs);
   }
+  if (onPreviewProgressChanged) onPreviewProgressChanged(posMs);
+}
+
+void MainWindow::showUpdateBanner(const QString& version, const QString& url) {
+  Q_UNUSED(url);
+  if (!statusLabel_ || !dismissUpdateButton_) {
+    return;
+  }
+  statusLabel_->setText(
+    QStringLiteral("Update available: v%1 — github.com/fALECX/TS3-Soundboard-Ultimate/releases")
+      .arg(version)
+  );
+  dismissUpdateButton_->setVisible(true);
+  QObject::disconnect(dismissUpdateButton_, &QPushButton::clicked, this, nullptr);
+  connect(dismissUpdateButton_, &QPushButton::clicked, this, [this]() {
+    statusLabel_->setText(
+      QStringLiteral("Select a cell, then import, search YouTube, or assign from the library.")
+    );
+    dismissUpdateButton_->setVisible(false);
+  });
 }
 
 void MainWindow::setSelectedCell(int cellIndex) {
@@ -1742,7 +1911,15 @@ QString MainWindow::displayNameForItem(const QListWidgetItem* item) const {
 
 void MainWindow::openYouTubeDialog() {
   YouTubeSearchDialog dlg(this, darkMode_);
+  onPreviewStatusChanged   = [&dlg](const QString& title, int durationMs, bool playing, bool paused) {
+    dlg.updatePreviewBar(title, durationMs, playing, paused);
+  };
+  onPreviewProgressChanged = [&dlg](int posMs) {
+    dlg.updatePreviewProgress(posMs);
+  };
   dlg.exec();
+  onPreviewStatusChanged   = nullptr;
+  onPreviewProgressChanged = nullptr;
 }
 
 void MainWindow::showRenameDialog(const QString& soundId) {
