@@ -24,6 +24,6 @@ message("Creating final plugin package in ${RPSU_PLUGINFILE_OUTPUT_DIR}")
 
 execute_process(
     COMMAND "${CMAKE_COMMAND}" -E tar "cfv" "${outputFile}" --format=zip
-            plugins plugins/rp_soundboard_ultimate package.ini
+            plugins package.ini
     WORKING_DIRECTORY "${CMAKE_INSTALL_PREFIX}"
 )
