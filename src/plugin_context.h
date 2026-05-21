@@ -2,7 +2,9 @@
 
 #include <atomic>
 
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QDir>
@@ -66,11 +68,46 @@ class PluginContext {
   }
 
   void shutdown() {
+    // Order matters: stop anything that could fire callbacks into the window
+    // (timers, network replies) BEFORE we tear the window down, otherwise the
+    // callback lambdas reference a deleted QObject and crash TS3 on
+    // deactivate.
+    //
+    // The timers themselves are kept alive (only stopped) because they are
+    // owned by the PluginContext singleton and need to survive across
+    // shutdown/init cycles — TS3 can re-activate the plugin without
+    // destroying our singleton.
+
+    if (positionPollTimer_) {
+      positionPollTimer_->stop();
+    }
+    if (previewClearTimer_) {
+      previewClearTimer_->stop();
+    }
+
+    // Drop the updateChecker signal connection so a late HTTP reply doesn't
+    // call window_->showUpdateBanner() on a destroyed widget. The connection
+    // is re-established in initialize().
+    updateChecker_.disconnect();
+
+    preview_.stop();
     playbackEngine_.shutdown();
+
     if (window_) {
-      window_->close();
-      delete window_;
+      // Disconnect all signals so any queued callbacks targeting the window
+      // (e.g. QTimer::singleShot lambdas posted to it) drop instead of
+      // dereferencing a deleted widget.
+      window_->disconnect();
+      window_->hide();
+      window_->deleteLater();
       window_ = nullptr;
+
+      // Drain the deferred-delete queue before returning to the loader. The
+      // loader does NOT FreeLibrary us, but the next ts3plugin_init() should
+      // start from a clean slate.
+      if (QCoreApplication::instance()) {
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+      }
     }
   }
 

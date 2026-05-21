@@ -6,7 +6,7 @@ Thanks for contributing to RP Soundboard Ultimate.
 
 Project owner and public-facing maintainer:
 
-- fALECX
+- fALECX - twitch.tv/fALECX
 - Twitch: https://twitch.tv/fALECX
 - X: https://x.com/fALECX
 - Discord: `falecx`

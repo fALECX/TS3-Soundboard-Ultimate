@@ -19,7 +19,7 @@ struct TS3Functions ts3Functions;
 
 static const char* kFallbackName = "RP Soundboard Ultimate";
 static const char* kFallbackVersion = RPSU_VERSION_STRING;
-static const char* kFallbackAuthor = "fALECX";
+static const char* kFallbackAuthor = "fALECX - twitch.tv/fALECX";
 static const char* kFallbackDescription = "Native TeamSpeak 3 soundboard plugin for RP Soundboard Ultimate.";
 static const char* kFallbackCommandKeyword = "rpsu";
 static const char* kFallbackMenuText = "Open RP Soundboard Ultimate";
@@ -407,7 +407,11 @@ PLUGINS_EXPORTDLL void ts3plugin_shutdown(void) {
   if (g_runtime.shutdown) {
     g_runtime.shutdown();
   }
-  clear_runtime();
+  // Intentionally do NOT FreeLibrary() the runtime here. Unloading the runtime
+  // DLL tears down Qt state (statically linked into the runtime) while TS3 is
+  // still running its own Qt event loop, which crashes the client on
+  // deactivate. Leave the runtime mapped — on re-activate, the loader will
+  // reuse the already-loaded module and call ts3plugin_init() again.
   if (g_registeredPluginId) {
     free(g_registeredPluginId);
     g_registeredPluginId = NULL;

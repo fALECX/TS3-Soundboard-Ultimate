@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
-project(rp_soundboard_ultimate_ts3_plugin VERSION 0.4.0 LANGUAGES C CXX)
+project(rp_soundboard_ultimate_ts3_plugin VERSION 0.5.0 LANGUAGES C CXX)
 
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in"

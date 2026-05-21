@@ -1,6 +1,6 @@
 # RP Soundboard Ultimate
 
-Created and maintained by fALECX.
+Created and maintained by fALECX - twitch.tv/fALECX.
 
 - Twitch: https://twitch.tv/fALECX
 - X: https://x.com/fALECX

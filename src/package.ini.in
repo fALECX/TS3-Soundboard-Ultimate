@@ -1,6 +1,6 @@
 Name = RP Soundboard Ultimate
 Type = Plugin
-Author = fALECX
+Author = fALECX - twitch.tv/fALECX
 Version = @RPSU_PACKAGE_VERSION@
 Platforms = win64
 APIVERSION = 26

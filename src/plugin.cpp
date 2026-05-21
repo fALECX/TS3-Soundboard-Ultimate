@@ -69,7 +69,7 @@ int ts3plugin_apiVersion() {
 }
 
 const char* ts3plugin_author() {
-  return "fALECX";
+  return "fALECX - twitch.tv/fALECX";
 }
 
 const char* ts3plugin_description() {
