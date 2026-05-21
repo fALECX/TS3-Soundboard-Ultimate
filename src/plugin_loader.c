@@ -7,6 +7,7 @@
 
 #include "pluginsdk/include/plugin_definitions.h"
 #include "pluginsdk/include/ts3_functions.h"
+#include "src/version.h"
 
 #if defined(WIN32) || defined(__WIN32__) || defined(_WIN32)
 #define PLUGINS_EXPORTDLL __declspec(dllexport)
@@ -17,7 +18,7 @@
 struct TS3Functions ts3Functions;
 
 static const char* kFallbackName = "RP Soundboard Ultimate";
-static const char* kFallbackVersion = "0.3.0";
+static const char* kFallbackVersion = RPSU_VERSION_STRING;
 static const char* kFallbackAuthor = "fALECX";
 static const char* kFallbackDescription = "Native TeamSpeak 3 soundboard plugin for RP Soundboard Ultimate.";
 static const char* kFallbackCommandKeyword = "rpsu";

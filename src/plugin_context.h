@@ -7,8 +7,6 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
-#include <QHash>
-#include <QMessageBox>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QtGlobal>
@@ -16,9 +14,11 @@
 #include "pluginsdk/include/ts3_functions.h"
 #include "src/audio/preview_player.h"
 #include "src/core/storage.h"
+#include "src/core/update_checker.h"
 #include "src/engine/playback_engine.h"
 #include "src/core/youtube_service.h"
 #include "src/ui/main_window.h"
+#include "src/version.h"
 
 #ifdef RPSU_ENABLE_TS3_ROUTING
 #include "src/plugin.h"
@@ -36,17 +36,37 @@ class PluginContext {
   bool initialize() {
     state_ = storage_.loadState();
     playbackEngine_.onPreviewStatusChanged = [this](const QString& title, int durationMs, bool playing) {
+      // Cache the title/duration so pausePreview() can pass them back to the
+      // UI (setPreviewStatus disables buttons if title is empty, which used to
+      // make pause look like stop in TS3-routing mode).
+      if (playing) {
+        currentPreviewTitle_ = title;
+        currentPreviewDurationMs_ = durationMs;
+        if (positionPollTimer_) positionPollTimer_->start();
+      } else {
+        if (positionPollTimer_) positionPollTimer_->stop();
+      }
       updatePreviewUi(title, durationMs, playing);
     };
     playbackEngine_.initialize();
     applyRuntimeConfig();
     storage_.saveState(state_);
+
+    QObject::connect(&updateChecker_, &UpdateChecker::updateAvailable,
+      [this](const QString& latestVersion, const QString& releaseUrl) {
+        pendingUpdateVersion_ = latestVersion;
+        pendingUpdateUrl_ = releaseUrl;
+        if (window_) {
+          window_->showUpdateBanner(pendingUpdateVersion_, pendingUpdateUrl_);
+        }
+      });
+    updateChecker_.checkAsync(QString::fromLatin1(RPSU_VERSION_STRING));
+
     return true;
   }
 
   void shutdown() {
     playbackEngine_.shutdown();
-    stopPlaybackRouting();
     if (window_) {
       window_->close();
       delete window_;
@@ -72,6 +92,12 @@ class PluginContext {
       };
       window_->onStopPreview = [this]() {
         stopPreview();
+      };
+      window_->onPausePreview = [this]() {
+        pausePreview();
+      };
+      window_->onSeekPreview = [this](int posMs) {
+        seekPreview(posMs);
       };
       window_->onImportSound = [this](int cellIndex) {
         importSound(cellIndex);
@@ -157,6 +183,10 @@ class PluginContext {
     window_->show();
     window_->raise();
     window_->activateWindow();
+
+    if (!pendingUpdateVersion_.isEmpty()) {
+      window_->showUpdateBanner(pendingUpdateVersion_, pendingUpdateUrl_);
+    }
   }
 
   void refreshWindow() {
@@ -165,8 +195,6 @@ class PluginContext {
     }
   }
 
-  // Reread library/boards/config from disk. Used by the runtime so it sees
-  // changes made by the external UI process between hotkey presses.
   void reloadState() {
     state_ = storage_.loadState();
     applyRuntimeConfig();
@@ -227,6 +255,9 @@ class PluginContext {
         error = previewError;
       }
       if (started) {
+        currentPreviewTitle_ = sound.displayName;
+        currentPreviewDurationMs_ = previewDurationMs;
+        if (positionPollTimer_) positionPollTimer_->start();
         updatePreviewUi(sound.displayName, previewDurationMs, true);
       }
 #endif
@@ -282,10 +313,26 @@ class PluginContext {
     QObject::connect(previewClearTimer_, &QTimer::timeout, [this]() {
       updatePreviewUi(QString(), 0, false);
     });
+    positionPollTimer_ = new QTimer();
+    positionPollTimer_->setInterval(50);
+    QObject::connect(positionPollTimer_, &QTimer::timeout, [this]() {
+      if (!window_) return;
+      if (playbackEngine_.isActive()) {
+        const int pos = playbackEngine_.getPositionMs();
+        if (pos >= 0) window_->updatePreviewProgress(pos);
+      } else if (preview_.isActive()) {
+        const int pos = preview_.currentPositionMs();
+        if (pos >= 0) window_->updatePreviewProgress(pos);
+      }
+    });
   }
 
   ~PluginContext() {
-    stopPlaybackRouting();
+    if (positionPollTimer_) {
+      positionPollTimer_->stop();
+      delete positionPollTimer_;
+      positionPollTimer_ = nullptr;
+    }
     if (previewClearTimer_) {
       previewClearTimer_->stop();
       delete previewClearTimer_;
@@ -296,10 +343,49 @@ class PluginContext {
   void stopPreview() {
     playbackEngine_.stopPlayback();
     preview_.stop();
-    if (previewClearTimer_) {
-      previewClearTimer_->stop();
-    }
+    currentPreviewTitle_.clear();
+    currentPreviewDurationMs_ = 0;
+    if (positionPollTimer_) positionPollTimer_->stop();
+    if (previewClearTimer_) previewClearTimer_->stop();
     updatePreviewUi(QString(), 0, false);
+  }
+
+  void pausePreview() {
+    // The button serves both audio paths: the MCI preview (YouTube previews,
+    // non-TS3 mode) and the Sampler-routed playback (TS3 mode). Pick whichever
+    // is currently active so a single button works in both contexts.
+    if (playbackEngine_.isActive()) {
+      if (playbackEngine_.isPaused()) {
+        playbackEngine_.resumePlayback();
+        if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, false);
+      } else {
+        playbackEngine_.pausePlayback();
+        if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, true);
+      }
+      return;
+    }
+    if (preview_.isPaused()) {
+      preview_.resume();
+      if (positionPollTimer_) positionPollTimer_->start();
+      if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, false);
+    } else {
+      if (preview_.pause()) {
+        if (positionPollTimer_) positionPollTimer_->stop();
+        if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, true);
+      }
+    }
+  }
+
+  void seekPreview(int posMs) {
+    if (playbackEngine_.isActive()) {
+      if (playbackEngine_.seekTo(posMs)) {
+        if (positionPollTimer_) positionPollTimer_->start();
+        if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, false);
+      }
+    } else if (preview_.seekTo(posMs)) {
+      if (positionPollTimer_) positionPollTimer_->start();
+      if (window_) window_->setPreviewStatus(currentPreviewTitle_, currentPreviewDurationMs_, true, false);
+    }
   }
 
   void updatePreviewUi(const QString& title, int durationMs, bool playing) {
@@ -317,8 +403,8 @@ class PluginContext {
   }
 
   void resizeActiveBoard(int rows, int cols) {
-    const int nextRows = qBound(1, rows, 50);
-    const int nextCols = qBound(1, cols, 50);
+    const int nextRows = qBound(1, rows, kMaxBoardDimension);
+    const int nextCols = qBound(1, cols, kMaxBoardDimension);
     const int nextTotal = nextRows * nextCols;
 
     for (BoardRecord& board : state_.boards) {
@@ -354,13 +440,9 @@ class PluginContext {
     }
   }
 
-  void startPlaybackRouting() {}
-  void reapplyPlaybackRouting() {}
-  void stopPlaybackRouting() {}
-
   void createBoard(const QString& name, int rows, int cols) {
-    const int safeRows = qBound(1, rows, 50);
-    const int safeCols = qBound(1, cols, 50);
+    const int safeRows = qBound(1, rows, kMaxBoardDimension);
+    const int safeCols = qBound(1, cols, kMaxBoardDimension);
     BoardRecord board = createBoardRecord(name.trimmed().isEmpty() ? QStringLiteral("New Board") : name.trimmed(), safeCols, safeRows);
     state_.activeBoardId = board.id;
     state_.boards.push_back(board);
@@ -441,13 +523,6 @@ class PluginContext {
 
   void deleteSound(const QString& soundId) {
     if (storage_.deleteSound(soundId, state_)) {
-      // Also clear any cells referencing this sound across boards.
-      for (BoardRecord& board : state_.boards) {
-        for (Cell& cell : board.cells) {
-          if (cell.soundId == soundId) cell.soundId.clear();
-        }
-        board.unassignedSoundIds.removeAll(soundId);
-      }
       storage_.saveState(state_);
       refreshWindow();
     }
@@ -509,9 +584,13 @@ class PluginContext {
     sound.sourceUrl = result.url;
     sound.tags = QStringList{ QStringLiteral("youtube") };
     storage_.refreshSoundMetadata(sound);
-    state_.library.push_back(sound);
-    storage_.saveState(state_);
-    refreshWindow();
+    // All state_ writes and Qt widget calls must happen on the main thread.
+    // Capture sound by value so the bg thread doesn't race with state_.library.
+    QTimer::singleShot(0, window_, [this, sound]() {
+      state_.library.push_back(sound);
+      storage_.saveState(state_);
+      refreshWindow();
+    });
     return sound.soundId;
   }
 
@@ -519,16 +598,6 @@ class PluginContext {
     const QString previewRoot = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation))
                                   .filePath(QStringLiteral("rpsu_youtube_preview"));
     QDir().mkpath(previewRoot);
-
-    // Stop MCI first so the previous WAV file isn't held open, then delete.
-    // Doing it in the wrong order leaks file handles and after many previews
-    // the MCI device can get into a bad state.
-    preview_.stop();
-    if (!lastPreviewPath_.isEmpty()) {
-      QFile::remove(lastPreviewPath_);
-      lastPreviewPath_.clear();
-    }
-    // Best-effort cleanup of any stale preview files from earlier sessions.
     cleanupStalePreviewFiles(previewRoot);
 
     QString previewPath;
@@ -536,19 +605,38 @@ class PluginContext {
       return false;
     }
 
-    int previewDurationMs = 0;
-    QString previewError;
+    // MCI must be driven from the main (UI) thread — its alias lifetime and
+    // internal window messages are tied to the thread that opened it. Calling
+    // playFile/stop from the async future races with the dialog/main loop and
+    // can leave aliases in a state where stop() silently fails. Post all MCI
+    // work and UI updates to the main thread.
+    const QString title = result.title;
     const QString previewSoundId = QStringLiteral("youtube_preview_%1").arg(result.id);
-    if (!preview_.playFile(previewSoundId, previewPath, &previewDurationMs, &previewError)) {
-      QFile::remove(previewPath);
-      if (errorMessage && errorMessage->isEmpty()) {
-        *errorMessage = previewError;
+    QTimer::singleShot(0, window_, [this, previewPath, previewSoundId, title]() {
+      preview_.stop();
+      if (!lastPreviewPath_.isEmpty()) {
+        QFile::remove(lastPreviewPath_);
+        lastPreviewPath_.clear();
       }
-      return false;
-    }
 
-    lastPreviewPath_ = previewPath;
-    updatePreviewUi(result.title, previewDurationMs, true);
+      int previewDurationMs = 0;
+      QString previewError;
+      if (!preview_.playFile(previewSoundId, previewPath, &previewDurationMs, &previewError)) {
+        QFile::remove(previewPath);
+        if (window_) {
+          window_->setPreviewStatus(
+            previewError.isEmpty() ? QStringLiteral("Preview failed.") : previewError,
+            0, false);
+        }
+        return;
+      }
+
+      lastPreviewPath_ = previewPath;
+      currentPreviewTitle_ = title;
+      currentPreviewDurationMs_ = previewDurationMs;
+      if (positionPollTimer_) positionPollTimer_->start();
+      updatePreviewUi(title, previewDurationMs, true);
+    });
     return true;
   }
 
@@ -570,9 +658,15 @@ class PluginContext {
   PlaybackEngine playbackEngine_;
   PreviewPlayer preview_;
   YouTubeService youtube_;
+  UpdateChecker updateChecker_;
   MainWindow* window_ = nullptr;
   QTimer* previewClearTimer_ = nullptr;
+  QTimer* positionPollTimer_ = nullptr;
   QString lastPreviewPath_;
+  QString currentPreviewTitle_;
+  int currentPreviewDurationMs_ = 0;
+  QString pendingUpdateVersion_;
+  QString pendingUpdateUrl_;
 };
 
 }  // namespace rpsu

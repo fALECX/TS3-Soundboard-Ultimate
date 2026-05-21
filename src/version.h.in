@@ -1,0 +1,2 @@
+#pragma once
+#define RPSU_VERSION_STRING "@PROJECT_VERSION@"

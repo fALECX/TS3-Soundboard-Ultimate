@@ -8,6 +8,54 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+
+function Add-PathEntryIfExists {
+  param([string]$PathEntry)
+  if ((Test-Path -LiteralPath $PathEntry) -and (($env:PATH -split ';') -notcontains $PathEntry)) {
+    $env:PATH = "$PathEntry;$env:PATH"
+  }
+}
+
+$localMsysRoot = Join-Path $env:LOCALAPPDATA 'Programs\msys64'
+Add-PathEntryIfExists (Join-Path $localMsysRoot 'ucrt64\bin')
+Add-PathEntryIfExists (Join-Path $localMsysRoot 'usr\bin')
+
+function Find-VcVars64 {
+  $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+  if (Test-Path -LiteralPath $vswhere) {
+    $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if ($installPath) {
+      $vcvars = Join-Path $installPath 'VC\Auxiliary\Build\vcvars64.bat'
+      if (Test-Path -LiteralPath $vcvars) {
+        return $vcvars
+      }
+    }
+  }
+
+  foreach ($edition in @('BuildTools', 'Community', 'Professional', 'Enterprise')) {
+    $vcvars = Join-Path $env:ProgramFiles "Microsoft Visual Studio\2022\$edition\VC\Auxiliary\Build\vcvars64.bat"
+    if (Test-Path -LiteralPath $vcvars) {
+      return $vcvars
+    }
+  }
+
+  throw 'Visual Studio 2022 C++ Build Tools were not found.'
+}
+
+function Find-CMakeExe {
+  $command = Get-Command cmake -ErrorAction SilentlyContinue
+  if ($command) {
+    return $command.Source
+  }
+
+  $programFilesCMake = Join-Path $env:ProgramFiles 'CMake\bin\cmake.exe'
+  if (Test-Path -LiteralPath $programFilesCMake) {
+    return $programFilesCMake
+  }
+
+  throw 'cmake.exe was not found.'
+}
+
 if (-not $BuildDir) {
   $msvcQt5Build = Join-Path $repoRoot 'build_msvc_qt5'
   $msvcBuild = Join-Path $repoRoot 'build_msvc_nmake'
@@ -46,14 +94,21 @@ function Stop-TeamSpeakIfRequested {
     $process | Stop-Process -Force
     Start-Sleep -Seconds 2
   } catch {
+    & taskkill.exe /F /T /IM ts3client_win64.exe | Out-Null
+    Start-Sleep -Seconds 2
+  }
+
+  if (Get-TeamSpeakProcess) {
     throw "TeamSpeak is running and could not be stopped from this shell. Close it manually or rerun this script from the same elevation level as TeamSpeak."
   }
 }
 
 if ($Build) {
   if ($buildDir -like '*build_msvc_*') {
-    $msvcCommand = "call ""C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"" && ""C:\Program Files\CMake\bin\cmake.exe"" --build ""$buildDir"" && ""C:\Program Files\CMake\bin\cmake.exe"" --install ""$buildDir"" --prefix ""$installDir"""
-    & cmd /c $msvcCommand
+    $vcvars = Find-VcVars64
+    $cmakeExe = Find-CMakeExe
+    $msvcCommand = "call ""$vcvars"" && ""$cmakeExe"" --build ""$buildDir"" && ""$cmakeExe"" --install ""$buildDir"" --prefix ""$installDir"""
+    & "C:\Windows\System32\cmd.exe" /c $msvcCommand
     if ($LASTEXITCODE -ne 0) {
       throw 'MSVC build or install staging failed.'
     }
@@ -190,7 +245,7 @@ foreach ($line in $loaderAfterLines) {
   }
 }
 
-[pscustomobject]@{
+$result = [pscustomobject]@{
   deployed_from = $installPlugins
   deployed_to = $tsPlugins
   launched_process_id = if ($started) { $started.Id } else { $null }
@@ -202,4 +257,10 @@ foreach ($line in $loaderAfterLines) {
   runtime_load_failure = $runtimeLoadFailure
   plugin_log_lines = $logLines
   loader_log_lines = $loaderAfterLines
-} | ConvertTo-Json -Depth 4
+}
+
+$result | ConvertTo-Json -Depth 4
+
+if ($StartTeamSpeak -and (-not $runtimeInitialized -or $safeModeLoaded -or $runtimeLoadFailure)) {
+  throw 'TeamSpeak smoke test failed: RP Soundboard Ultimate did not initialize outside safe mode.'
+}

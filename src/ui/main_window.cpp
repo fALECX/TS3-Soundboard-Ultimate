@@ -28,6 +28,7 @@
 #include <QShowEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QStringList>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QMessageBox>
@@ -215,7 +216,7 @@ static QIcon makeSunIcon(int size) {
   p.setPen(Qt::NoPen);
   // Rays
   for (int i = 0; i < 8; ++i) {
-    const double angle = i * M_PI / 4.0;
+    const double angle = i * 3.14159265358979323846 / 4.0;
     const double rx = cx + ro * std::cos(angle);
     const double ry = cy + ro * std::sin(angle);
     p.drawEllipse(QPointF(rx, ry), rw, rw);
@@ -309,6 +310,59 @@ QString libraryMetaLabel(const SoundRecord& sound) {
 
 QString emojiFromUtf8(const char* value) {
   return QString::fromUtf8(value);
+}
+
+QIcon makeStopIconFn(int size, bool enabled) {
+  QPixmap pm(size, size);
+  pm.fill(Qt::transparent);
+  QPainter p(&pm);
+  p.setRenderHint(QPainter::Antialiasing, true);
+  const QColor bg     = enabled ? QColor("#ef4444") : QColor(160, 160, 160, 80);
+  const QColor square = enabled ? QColor(Qt::white)  : QColor(255, 255, 255, 160);
+  p.setPen(Qt::NoPen);
+  p.setBrush(bg);
+  p.drawEllipse(QRectF(0.5, 0.5, size - 1.0, size - 1.0));
+  const double s = size * 0.38;
+  const double x = (size - s) / 2.0;
+  p.setBrush(square);
+  QPainterPath path;
+  path.addRoundedRect(QRectF(x, x, s, s), s * 0.18, s * 0.18);
+  p.drawPath(path);
+  return QIcon(pm);
+}
+
+QIcon makePauseIconFn(int size, bool enabled, bool showResume) {
+  QPixmap pm(size, size);
+  pm.fill(Qt::transparent);
+  QPainter p(&pm);
+  p.setRenderHint(QPainter::Antialiasing, true);
+  const QColor bg = enabled ? QColor("#22c55e") : QColor(160, 160, 160, 80);
+  const QColor fg = enabled ? QColor(Qt::white)  : QColor(255, 255, 255, 160);
+  p.setPen(Qt::NoPen);
+  p.setBrush(bg);
+  p.drawEllipse(QRectF(0.5, 0.5, size - 1.0, size - 1.0));
+  p.setBrush(fg);
+  if (showResume) {
+    const double m = size * 0.28;
+    const double off = size * 0.04;
+    QPainterPath path2;
+    path2.moveTo(m + off, m);
+    path2.lineTo(size - m + off, size / 2.0);
+    path2.lineTo(m + off, size - m);
+    path2.closeSubpath();
+    p.drawPath(path2);
+  } else {
+    const double barW = size * 0.13;
+    const double barH = size * 0.38;
+    const double barY = (size - barH) / 2.0;
+    const double gap  = size * 0.08;
+    const double totalW = 2.0 * barW + gap;
+    const double startX = (size - totalW) / 2.0;
+    const double r = barW * 0.3;
+    p.drawRoundedRect(QRectF(startX, barY, barW, barH), r, r);
+    p.drawRoundedRect(QRectF(startX + barW + gap, barY, barW, barH), r, r);
+  }
+  return QIcon(pm);
 }
 
 
@@ -408,6 +462,93 @@ class YouTubeSearchDialog : public QDialog {
     resultsTable_->setColumnWidth(3, 110);
     resultsTable_->setStyleSheet(tableItemStyleSheet(t));
     root->addWidget(resultsTable_, 1);
+
+    // Preview bar — mirrors the main window's preview bar
+    auto* dlgPreviewBar = new QFrame(this);
+    dlgPreviewBar->setObjectName(QStringLiteral("dlgPreviewBar"));
+    dlgPreviewBar->setStyleSheet(QStringLiteral(
+      "QFrame#dlgPreviewBar { background: %1; border: 1px solid %2; border-radius: 10px; }"
+    ).arg(t.surfaceBg, t.surfaceBorder));
+    auto* dlgPreviewOuter = new QVBoxLayout(dlgPreviewBar);
+    dlgPreviewOuter->setContentsMargins(14, 8, 14, 6);
+    dlgPreviewOuter->setSpacing(4);
+
+    auto* dlgPreviewRow = new QHBoxLayout();
+    dlgPreviewRow->setSpacing(6);
+
+    dlgLiveIndicator_ = new QLabel(dlgPreviewBar);
+    dlgLiveIndicator_->setFixedSize(12, 12);
+    dlgLiveIndicator_->setStyleSheet(QStringLiteral("background-color: #ef4444; border-radius: 6px;"));
+    dlgLiveIndicator_->setVisible(false);
+
+    dlgPreviewLabel_ = new QLabel(QStringLiteral("Preview stopped"), dlgPreviewBar);
+    dlgPreviewLabel_->setStyleSheet(QStringLiteral("color: %1; font-size: 13px;").arg(t.textPrimary));
+
+    dlgPauseButton_ = new QPushButton(dlgPreviewBar);
+    dlgPauseButton_->setFixedSize(32, 32);
+    dlgPauseButton_->setIconSize(QSize(28, 28));
+    dlgPauseButton_->setCursor(Qt::PointingHandCursor);
+    dlgPauseButton_->setToolTip(QStringLiteral("Pause"));
+    dlgPauseButton_->setFlat(true);
+    dlgPauseButton_->setEnabled(false);
+    dlgPauseButton_->setProperty("iconPause",    QVariant::fromValue(makePauseIconFn(64, true,  false)));
+    dlgPauseButton_->setProperty("iconDisabled", QVariant::fromValue(makePauseIconFn(64, false, false)));
+    dlgPauseButton_->setIcon(dlgPauseButton_->property("iconDisabled").value<QIcon>());
+
+    dlgResumeButton_ = new QPushButton(dlgPreviewBar);
+    dlgResumeButton_->setFixedSize(32, 32);
+    dlgResumeButton_->setIconSize(QSize(28, 28));
+    dlgResumeButton_->setCursor(Qt::PointingHandCursor);
+    dlgResumeButton_->setToolTip(QStringLiteral("Continue"));
+    dlgResumeButton_->setFlat(true);
+    dlgResumeButton_->setEnabled(false);
+    dlgResumeButton_->setProperty("iconResume",   QVariant::fromValue(makePauseIconFn(64, true,  true)));
+    dlgResumeButton_->setProperty("iconDisabled", QVariant::fromValue(makePauseIconFn(64, false, true)));
+    dlgResumeButton_->setIcon(dlgResumeButton_->property("iconDisabled").value<QIcon>());
+
+    dlgStopButton_ = new QPushButton(dlgPreviewBar);
+    dlgStopButton_->setFixedSize(32, 32);
+    dlgStopButton_->setIconSize(QSize(28, 28));
+    dlgStopButton_->setCursor(Qt::PointingHandCursor);
+    dlgStopButton_->setToolTip(QStringLiteral("Stop preview"));
+    dlgStopButton_->setFlat(true);
+    dlgStopButton_->setEnabled(false);
+    dlgStopButton_->setProperty("iconEnabled",  QVariant::fromValue(makeStopIconFn(64, true)));
+    dlgStopButton_->setProperty("iconDisabled", QVariant::fromValue(makeStopIconFn(64, false)));
+    dlgStopButton_->setIcon(dlgStopButton_->property("iconDisabled").value<QIcon>());
+
+    dlgPreviewRow->addWidget(dlgLiveIndicator_);
+    dlgPreviewRow->addSpacing(4);
+    dlgPreviewRow->addWidget(dlgPreviewLabel_, 1);
+    dlgPreviewRow->addWidget(dlgPauseButton_);
+    dlgPreviewRow->addWidget(dlgResumeButton_);
+    dlgPreviewRow->addWidget(dlgStopButton_);
+
+    dlgProgressSlider_ = new QSlider(Qt::Horizontal, dlgPreviewBar);
+    dlgProgressSlider_->setEnabled(false);
+    dlgProgressSlider_->setRange(0, 0);
+    dlgProgressSlider_->setValue(0);
+    dlgProgressSlider_->setFixedHeight(16);
+    dlgProgressSlider_->setCursor(Qt::PointingHandCursor);
+
+    dlgPreviewOuter->addLayout(dlgPreviewRow);
+    dlgPreviewOuter->addWidget(dlgProgressSlider_);
+    root->addWidget(dlgPreviewBar);
+
+    connect(dlgPauseButton_,  &QPushButton::clicked, this, [this]() {
+      if (owner_->onPausePreview) owner_->onPausePreview();
+    });
+    connect(dlgResumeButton_, &QPushButton::clicked, this, [this]() {
+      if (owner_->onPausePreview) owner_->onPausePreview();
+    });
+    connect(dlgStopButton_,   &QPushButton::clicked, this, [this]() {
+      if (owner_->onStopPreview) owner_->onStopPreview();
+    });
+    connect(dlgProgressSlider_, &QSlider::sliderPressed,  this, [this]() { dlgSliderDragging_ = true; });
+    connect(dlgProgressSlider_, &QSlider::sliderReleased, this, [this]() {
+      dlgSliderDragging_ = false;
+      if (owner_->onSeekPreview) owner_->onSeekPreview(dlgProgressSlider_->value());
+    });
 
     // Bottom buttons
     auto* buttons   = new QHBoxLayout();
@@ -623,17 +764,36 @@ class YouTubeSearchDialog : public QDialog {
         return QIcon(pm);
       };
 
+      // Filled square stop icon, white on a red button.
+      auto makeStopRowIcon = [](int size, QColor fg) {
+        QPixmap pm(size, size);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setPen(Qt::NoPen);
+        p.setBrush(fg);
+        const double inset = size * 0.28;
+        p.drawRoundedRect(QRectF(inset, inset, size - 2 * inset, size - 2 * inset), 2.0, 2.0);
+        return QIcon(pm);
+      };
+
       auto* previewButton     = new QPushButton(actionHost);
+      auto* stopRowButton     = new QPushButton(actionHost);
       auto* downloadRowButton = new QPushButton(actionHost);
       previewButton->setCursor(Qt::PointingHandCursor);
+      stopRowButton->setCursor(Qt::PointingHandCursor);
       downloadRowButton->setCursor(Qt::PointingHandCursor);
       previewButton->setFixedSize(26, 26);
+      stopRowButton->setFixedSize(26, 26);
       downloadRowButton->setFixedSize(26, 26);
       previewButton->setIconSize(QSize(14, 14));
+      stopRowButton->setIconSize(QSize(14, 14));
       downloadRowButton->setIconSize(QSize(14, 14));
       previewButton->setToolTip(QStringLiteral("Preview"));
+      stopRowButton->setToolTip(QStringLiteral("Stop preview"));
       downloadRowButton->setToolTip(QStringLiteral("Download"));
       previewButton->setIcon(makePlayIcon(48, QColor(t.textPrimary)));
+      stopRowButton->setIcon(makeStopRowIcon(48, QColor(Qt::white)));
       // Download button uses a strong, mode-independent blue so the white
       // icon stays readable in both light and dark themes.
       downloadRowButton->setIcon(makeDownloadIcon(48, QColor(Qt::white)));
@@ -641,6 +801,9 @@ class YouTubeSearchDialog : public QDialog {
         "QPushButton { background: %1; border: 1px solid %2; border-radius: 13px; padding: 0; }"
         "QPushButton:hover { background: %3; }")
         .arg(t.buttonBg, t.buttonBorder, t.buttonHover));
+      stopRowButton->setStyleSheet(QStringLiteral(
+        "QPushButton { background: #dc2626; border: 1px solid #991b1b; border-radius: 13px; padding: 0; }"
+        "QPushButton:hover { background: #ef4444; }"));
       downloadRowButton->setStyleSheet(QStringLiteral(
         "QPushButton { background: #2563eb; border: 1px solid #1e40af; border-radius: 13px; padding: 0; }"
         "QPushButton:hover { background: #1d4ed8; }"));
@@ -660,12 +823,17 @@ class YouTubeSearchDialog : public QDialog {
           statusLabel_->setText(QStringLiteral("Playing preview: %1").arg(result.title));
         }
       });
+      connect(stopRowButton, &QPushButton::clicked, this, [this]() {
+        if (owner_->onStopPreview) owner_->onStopPreview();
+        statusLabel_->setText(QStringLiteral("Preview stopped."));
+      });
       connect(downloadRowButton, &QPushButton::clicked, this, [this, index]() {
         resultsTable_->selectRow(index);
         downloadSelected();
       });
 
       actionLayout->addWidget(previewButton);
+      actionLayout->addWidget(stopRowButton);
       actionLayout->addWidget(downloadRowButton);
       actionLayout->addStretch(1);
       resultsTable_->setCellWidget(index, 3, actionHost);
@@ -720,6 +888,56 @@ class YouTubeSearchDialog : public QDialog {
     accept();
   }
 
+ public:
+  void updatePreviewProgress(int posMs) {
+    if (!dlgSliderDragging_) {
+      QSignalBlocker b(dlgProgressSlider_);
+      dlgProgressSlider_->setValue(posMs);
+    }
+  }
+
+  void updatePreviewBar(const QString& title, int durationMs, bool playing, bool paused) {
+    if (!playing) {
+      dlgPreviewLabel_->setText(QStringLiteral("Preview stopped"));
+      dlgPauseButton_->setEnabled(false);
+      dlgPauseButton_->setIcon(dlgPauseButton_->property("iconDisabled").value<QIcon>());
+      dlgResumeButton_->setEnabled(false);
+      dlgResumeButton_->setIcon(dlgResumeButton_->property("iconDisabled").value<QIcon>());
+      dlgStopButton_->setEnabled(false);
+      dlgStopButton_->setIcon(dlgStopButton_->property("iconDisabled").value<QIcon>());
+      dlgProgressSlider_->setEnabled(false);
+      { QSignalBlocker b(dlgProgressSlider_); dlgProgressSlider_->setRange(0, 0); dlgProgressSlider_->setValue(0); }
+      dlgLiveIndicator_->setVisible(false);
+      return;
+    }
+    if (paused) {
+      dlgPreviewLabel_->setText(
+        QStringLiteral("Paused: %1  [%2]").arg(title, formatDurationMs(durationMs))
+      );
+      dlgPauseButton_->setEnabled(false);
+      dlgPauseButton_->setIcon(dlgPauseButton_->property("iconDisabled").value<QIcon>());
+      dlgResumeButton_->setEnabled(true);
+      dlgResumeButton_->setIcon(dlgResumeButton_->property("iconResume").value<QIcon>());
+    } else {
+      dlgPreviewLabel_->setText(
+        QStringLiteral("Playing: %1  [%2]").arg(title, formatDurationMs(durationMs))
+      );
+      dlgPauseButton_->setEnabled(true);
+      dlgPauseButton_->setIcon(dlgPauseButton_->property("iconPause").value<QIcon>());
+      dlgResumeButton_->setEnabled(false);
+      dlgResumeButton_->setIcon(dlgResumeButton_->property("iconDisabled").value<QIcon>());
+    }
+    dlgStopButton_->setEnabled(true);
+    dlgStopButton_->setIcon(dlgStopButton_->property("iconEnabled").value<QIcon>());
+    if (durationMs > 0) {
+      QSignalBlocker b(dlgProgressSlider_);
+      dlgProgressSlider_->setRange(0, durationMs);
+      dlgProgressSlider_->setEnabled(true);
+    }
+    dlgLiveIndicator_->setVisible(!paused);
+  }
+
+ private:
   MainWindow*   owner_;
   bool          darkMode_;
   QLineEdit*    queryEdit_      = nullptr;
@@ -732,6 +950,13 @@ class YouTubeSearchDialog : public QDialog {
   QPushButton*  downloadButton_ = nullptr;
   QPushButton*  closeButton_    = nullptr;
   QPushButton*  cancelButton_   = nullptr;
+  QLabel*       dlgPreviewLabel_   = nullptr;
+  QLabel*       dlgLiveIndicator_  = nullptr;
+  QPushButton*  dlgPauseButton_    = nullptr;
+  QPushButton*  dlgResumeButton_   = nullptr;
+  QPushButton*  dlgStopButton_     = nullptr;
+  QSlider*      dlgProgressSlider_ = nullptr;
+  bool          dlgSliderDragging_ = false;
   bool          busy_           = false;
   int           loadingTick_    = 0;
   QString       lastQuery_;
@@ -764,6 +989,45 @@ class YouTubeSearchDialog : public QDialog {
     QDialog::closeEvent(event);
   }
 };
+
+QString hotkeyTextForEvent(const QKeyEvent* event) {
+  const int key = event->key();
+  const Qt::KeyboardModifiers modifiers = event->modifiers() &
+      (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
+
+  auto modifierText = [](Qt::KeyboardModifiers mods) {
+    QStringList parts;
+    if (mods.testFlag(Qt::ControlModifier)) parts.append(QStringLiteral("Ctrl"));
+    if (mods.testFlag(Qt::ShiftModifier)) parts.append(QStringLiteral("Shift"));
+    if (mods.testFlag(Qt::AltModifier)) parts.append(QStringLiteral("Alt"));
+    if (mods.testFlag(Qt::MetaModifier)) parts.append(QStringLiteral("Meta"));
+    return parts.join(QStringLiteral("+"));
+  };
+
+  if (key == Qt::Key_Control || key == Qt::Key_Shift ||
+      key == Qt::Key_Alt || key == Qt::Key_Meta) {
+    QString text = modifierText(modifiers);
+    if (!text.isEmpty()) return text;
+
+    switch (key) {
+      case Qt::Key_Control: return QStringLiteral("Ctrl");
+      case Qt::Key_Shift: return QStringLiteral("Shift");
+      case Qt::Key_Alt: return QStringLiteral("Alt");
+      case Qt::Key_Meta: return QStringLiteral("Meta");
+      default: break;
+    }
+  }
+
+  QString text = QKeySequence(static_cast<int>(modifiers) | key)
+                   .toString(QKeySequence::PortableText);
+  if (text.isEmpty()) {
+    text = QKeySequence(key).toString(QKeySequence::PortableText);
+  }
+  if (text.isEmpty() && !event->text().isEmpty()) {
+    text = event->text().toUpper();
+  }
+  return text;
+}
 
 class HotkeyInputDialog : public QDialog {
  public:
@@ -874,14 +1138,8 @@ class HotkeyInputDialog : public QDialog {
       return;
     }
 
-    QString captured;
-    if (key == Qt::Key_Control || key == Qt::Key_Shift ||
-        key == Qt::Key_Alt || key == Qt::Key_Meta) {
-      captured = QKeySequence(key).toString(QKeySequence::NativeText);
-    } else {
-      captured = QKeySequence(static_cast<int>(event->modifiers()) | key)
-                     .toString(QKeySequence::NativeText);
-    }
+    const QString captured = hotkeyTextForEvent(event);
+    if (captured.isEmpty()) return;
 
     if (activeBox_ == 1) {
       key1_ = captured;
@@ -1032,7 +1290,11 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
     statusFrame
   );
   statusLabel_->setObjectName(QStringLiteral("statusLabel"));
-  statusLayout->addWidget(statusLabel_);
+  statusLayout->addWidget(statusLabel_, 1);
+  dismissUpdateButton_ = new QPushButton(QStringLiteral("Dismiss"), statusFrame);
+  dismissUpdateButton_->setObjectName(QStringLiteral("dismissUpdateButton"));
+  dismissUpdateButton_->setVisible(false);
+  statusLayout->addWidget(dismissUpdateButton_);
   root->addWidget(statusFrame);
 
   // ── Main content ─────────────────────────────────────────────────────────
@@ -1089,12 +1351,12 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   auto* sizeLayout = new QHBoxLayout();
   sizeLayout->addWidget(new QLabel(QStringLiteral("Rows:"), settingsFrame_));
   rowsSpin_ = new QSpinBox(settingsFrame_);
-  rowsSpin_->setRange(1, 50);
+  rowsSpin_->setRange(1, kMaxBoardDimension);
   sizeLayout->addWidget(rowsSpin_);
   sizeLayout->addSpacing(8);
   sizeLayout->addWidget(new QLabel(QStringLiteral("Columns:"), settingsFrame_));
   colsSpin_ = new QSpinBox(settingsFrame_);
-  colsSpin_->setRange(1, 50);
+  colsSpin_->setRange(1, kMaxBoardDimension);
   sizeLayout->addWidget(colsSpin_);
   sizeLayout->addStretch(1);
 
@@ -1105,8 +1367,11 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   // Preview bar
   previewBar_ = new QFrame(contentWidget);
   previewBar_->setObjectName(QStringLiteral("previewBar"));
-  auto* previewLayout = new QHBoxLayout(previewBar_);
-  previewLayout->setContentsMargins(14, 8, 14, 8);
+  auto* previewOuterLayout = new QVBoxLayout(previewBar_);
+  previewOuterLayout->setContentsMargins(14, 8, 14, 6);
+  previewOuterLayout->setSpacing(4);
+  auto* previewLayout = new QHBoxLayout();
+  previewLayout->setSpacing(4);
   liveIndicator_ = new QLabel(previewBar_);
   liveIndicator_->setFixedSize(12, 12);
   liveIndicator_->setStyleSheet(QStringLiteral("background-color: #ef4444; border-radius: 6px;"));
@@ -1115,26 +1380,32 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   previewLabel_->setObjectName(QStringLiteral("previewLabel"));
   // Hand-drawn stop icon (white rounded square inside a soft red circle).
   // Renders crisp at any DPI; no external assets needed.
-  auto makeStopIcon = [](int size, bool enabled) {
-    QPixmap pm(size, size);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing, true);
-    const QColor bg     = enabled ? QColor("#ef4444") : QColor(160, 160, 160, 80);
-    const QColor square = enabled ? QColor(Qt::white)  : QColor(255, 255, 255, 160);
-    // Background disc
-    p.setPen(Qt::NoPen);
-    p.setBrush(bg);
-    p.drawEllipse(QRectF(0.5, 0.5, size - 1.0, size - 1.0));
-    // Rounded stop square, ~38% of icon size, centered
-    const double s = size * 0.38;
-    const double x = (size - s) / 2.0;
-    p.setBrush(square);
-    QPainterPath path;
-    path.addRoundedRect(QRectF(x, x, s, s), s * 0.18, s * 0.18);
-    p.drawPath(path);
-    return QIcon(pm);
-  };
+  auto makeStopIcon  = [](int size, bool enabled)              { return makeStopIconFn(size, enabled); };
+  auto makePauseIcon = [](int size, bool enabled, bool resume) { return makePauseIconFn(size, enabled, resume); };
+
+  pausePreviewButton_ = new QPushButton(previewBar_);
+  pausePreviewButton_->setObjectName(QStringLiteral("pausePreviewButton"));
+  pausePreviewButton_->setEnabled(false);
+  pausePreviewButton_->setFixedSize(32, 32);
+  pausePreviewButton_->setIconSize(QSize(28, 28));
+  pausePreviewButton_->setCursor(Qt::PointingHandCursor);
+  pausePreviewButton_->setToolTip(QStringLiteral("Pause"));
+  pausePreviewButton_->setFlat(true);
+  pausePreviewButton_->setProperty("iconPause",    QVariant::fromValue(makePauseIcon(64, true,  false)));
+  pausePreviewButton_->setProperty("iconDisabled", QVariant::fromValue(makePauseIcon(64, false, false)));
+  pausePreviewButton_->setIcon(pausePreviewButton_->property("iconDisabled").value<QIcon>());
+
+  resumePreviewButton_ = new QPushButton(previewBar_);
+  resumePreviewButton_->setObjectName(QStringLiteral("resumePreviewButton"));
+  resumePreviewButton_->setEnabled(false);
+  resumePreviewButton_->setFixedSize(32, 32);
+  resumePreviewButton_->setIconSize(QSize(28, 28));
+  resumePreviewButton_->setCursor(Qt::PointingHandCursor);
+  resumePreviewButton_->setToolTip(QStringLiteral("Continue"));
+  resumePreviewButton_->setFlat(true);
+  resumePreviewButton_->setProperty("iconResume",   QVariant::fromValue(makePauseIcon(64, true,  true)));
+  resumePreviewButton_->setProperty("iconDisabled", QVariant::fromValue(makePauseIcon(64, false, true)));
+  resumePreviewButton_->setIcon(resumePreviewButton_->property("iconDisabled").value<QIcon>());
 
   stopPreviewButton_ = new QPushButton(previewBar_);
   stopPreviewButton_->setObjectName(QStringLiteral("stopPreviewButton"));
@@ -1151,7 +1422,20 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   previewLayout->addWidget(liveIndicator_);
   previewLayout->addSpacing(8);
   previewLayout->addWidget(previewLabel_, 1);
+  previewLayout->addWidget(pausePreviewButton_);
+  previewLayout->addWidget(resumePreviewButton_);
   previewLayout->addWidget(stopPreviewButton_);
+
+  progressSlider_ = new QSlider(Qt::Horizontal, previewBar_);
+  progressSlider_->setObjectName(QStringLiteral("progressSlider"));
+  progressSlider_->setEnabled(false);
+  progressSlider_->setRange(0, 0);
+  progressSlider_->setValue(0);
+  progressSlider_->setFixedHeight(16);
+  progressSlider_->setCursor(Qt::PointingHandCursor);
+
+  previewOuterLayout->addLayout(previewLayout);
+  previewOuterLayout->addWidget(progressSlider_);
   contentLayout->addWidget(previewBar_);
 
   // Sound grid + library
@@ -1389,6 +1673,19 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   connect(colsSpin_, qOverload<int>(&QSpinBox::valueChanged), this, [this](int cols) {
     if (!rebuildingUi_ && onActiveBoardSizeChanged) onActiveBoardSizeChanged(rowsSpin_->value(), cols);
   });
+  connect(progressSlider_, &QSlider::sliderPressed, this, [this]() {
+    sliderDragging_ = true;
+  });
+  connect(progressSlider_, &QSlider::sliderReleased, this, [this]() {
+    sliderDragging_ = false;
+    if (onSeekPreview) onSeekPreview(progressSlider_->value());
+  });
+  connect(pausePreviewButton_, &QPushButton::clicked, this, [this]() {
+    if (onPausePreview) onPausePreview();
+  });
+  connect(resumePreviewButton_, &QPushButton::clicked, this, [this]() {
+    if (onPausePreview) onPausePreview();
+  });
   connect(stopPreviewButton_, &QPushButton::clicked, this, [this]() {
     if (onStopPreview) onStopPreview();
   });
@@ -1518,20 +1815,74 @@ const BoardRecord* MainWindow::activeBoard() const {
   return state_.boards.isEmpty() ? nullptr : &state_.boards.front();
 }
 
-void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool playing) {
+void MainWindow::setPreviewStatus(const QString& title, int durationMs, bool playing, bool paused) {
   if (!playing || title.trimmed().isEmpty()) {
     previewLabel_->setText(QStringLiteral("Preview stopped"));
+    pausePreviewButton_->setEnabled(false);
+    pausePreviewButton_->setIcon(pausePreviewButton_->property("iconDisabled").value<QIcon>());
+    resumePreviewButton_->setEnabled(false);
+    resumePreviewButton_->setIcon(resumePreviewButton_->property("iconDisabled").value<QIcon>());
     stopPreviewButton_->setEnabled(false);
     stopPreviewButton_->setIcon(stopPreviewButton_->property("iconDisabled").value<QIcon>());
+    progressSlider_->setEnabled(false);
+    { QSignalBlocker b(progressSlider_); progressSlider_->setRange(0, 0); progressSlider_->setValue(0); }
     liveIndicator_->setVisible(false);
+    if (onPreviewStatusChanged) onPreviewStatusChanged(QString(), 0, false, false);
     return;
   }
-  previewLabel_->setText(
-    QStringLiteral("Playing: %1  [%2]").arg(title, formatDurationMs(durationMs))
-  );
+  if (paused) {
+    previewLabel_->setText(
+      QStringLiteral("Paused: %1  [%2]").arg(title, formatDurationMs(durationMs))
+    );
+    pausePreviewButton_->setEnabled(false);
+    pausePreviewButton_->setIcon(pausePreviewButton_->property("iconDisabled").value<QIcon>());
+    resumePreviewButton_->setEnabled(true);
+    resumePreviewButton_->setIcon(resumePreviewButton_->property("iconResume").value<QIcon>());
+  } else {
+    previewLabel_->setText(
+      QStringLiteral("Playing: %1  [%2]").arg(title, formatDurationMs(durationMs))
+    );
+    pausePreviewButton_->setEnabled(true);
+    pausePreviewButton_->setIcon(pausePreviewButton_->property("iconPause").value<QIcon>());
+    resumePreviewButton_->setEnabled(false);
+    resumePreviewButton_->setIcon(resumePreviewButton_->property("iconDisabled").value<QIcon>());
+  }
   stopPreviewButton_->setIcon(stopPreviewButton_->property("iconEnabled").value<QIcon>());
   stopPreviewButton_->setEnabled(true);
-  liveIndicator_->setVisible(true);
+  if (durationMs > 0) {
+    QSignalBlocker b(progressSlider_);
+    progressSlider_->setRange(0, durationMs);
+    progressSlider_->setEnabled(true);
+  }
+  liveIndicator_->setVisible(!paused);
+  if (onPreviewStatusChanged) onPreviewStatusChanged(title, durationMs, playing, paused);
+}
+
+void MainWindow::updatePreviewProgress(int posMs) {
+  if (!sliderDragging_) {
+    QSignalBlocker b(progressSlider_);
+    progressSlider_->setValue(posMs);
+  }
+  if (onPreviewProgressChanged) onPreviewProgressChanged(posMs);
+}
+
+void MainWindow::showUpdateBanner(const QString& version, const QString& url) {
+  Q_UNUSED(url);
+  if (!statusLabel_ || !dismissUpdateButton_) {
+    return;
+  }
+  statusLabel_->setText(
+    QStringLiteral("Update available: v%1 — github.com/fALECX/TS3-Soundboard-Ultimate/releases")
+      .arg(version)
+  );
+  dismissUpdateButton_->setVisible(true);
+  QObject::disconnect(dismissUpdateButton_, &QPushButton::clicked, this, nullptr);
+  connect(dismissUpdateButton_, &QPushButton::clicked, this, [this]() {
+    statusLabel_->setText(
+      QStringLiteral("Select a cell, then import, search YouTube, or assign from the library.")
+    );
+    dismissUpdateButton_->setVisible(false);
+  });
 }
 
 void MainWindow::setSelectedCell(int cellIndex) {
@@ -1557,7 +1908,15 @@ QString MainWindow::displayNameForItem(const QListWidgetItem* item) const {
 
 void MainWindow::openYouTubeDialog() {
   YouTubeSearchDialog dlg(this, darkMode_);
+  onPreviewStatusChanged   = [&dlg](const QString& title, int durationMs, bool playing, bool paused) {
+    dlg.updatePreviewBar(title, durationMs, playing, paused);
+  };
+  onPreviewProgressChanged = [&dlg](int posMs) {
+    dlg.updatePreviewProgress(posMs);
+  };
   dlg.exec();
+  onPreviewStatusChanged   = nullptr;
+  onPreviewProgressChanged = nullptr;
 }
 
 void MainWindow::showRenameDialog(const QString& soundId) {
@@ -1773,10 +2132,10 @@ void MainWindow::rebuild() {
 
   cellCards_.clear();
   while (QLayoutItem* item = gridLayout_->takeAt(0)) {
-    delete item->widget();
+    if (item->widget()) item->widget()->deleteLater();
     delete item;
   }
-  for (int i = 0; i < 50; ++i) {
+  for (int i = 0; i < kMaxBoardDimension; ++i) {
     gridLayout_->setColumnStretch(i, 0);
     gridLayout_->setColumnMinimumWidth(i, 0);
     gridLayout_->setRowStretch(i, 0);

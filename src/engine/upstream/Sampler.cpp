@@ -28,7 +28,9 @@ Sampler::Sampler()
       m_soundDbSetting(0.0),
       m_state(eSILENT),
       m_localPlayback(true),
-      m_muteMyself(false) {
+      m_muteMyself(false),
+      m_totalFrames(0),
+      m_consumedFrames(0) {
   assert(m_state.is_lock_free());
 }
 
@@ -125,6 +127,9 @@ int Sampler::fetchInputSamples(short* samples, int count, int channels, bool* fi
   std::lock_guard<std::mutex> Lock(m_mutex);
   setVolumeDb(m_globalDbSettingRemote + m_soundDbSetting);
   const int written = fetchSamples(m_sbCapture, m_peakMeterCapture, samples, count, channels, true, 0, 1, m_muteMyself, m_muteMyself);
+  if (written > 0 && m_state == ePLAYING) {
+    m_consumedFrames.fetch_add(written, std::memory_order_relaxed);
+  }
 
   if (m_state == ePLAYING && m_inputFile && m_inputFile->done()) {
     SampleBuffer::Lock sbl(m_sbCapture.getMutex());
@@ -163,6 +168,9 @@ int Sampler::fetchOutputSamples(short* samples, int count, int channels, const u
 
   if (written > 0) {
     *channelFillMask |= (bitMaskLeft | bitMaskRight);
+    if (m_state == ePLAYING_PREVIEW) {
+      m_consumedFrames.fetch_add(written, std::memory_order_relaxed);
+    }
   }
 
   if (m_state == ePLAYING_PREVIEW && m_inputFile && m_inputFile->done()) {
@@ -229,11 +237,13 @@ void Sampler::stopSoundInternal() {
     m_inputFile->close();
     delete m_inputFile;
     m_inputFile = nullptr;
+    m_totalFrames = 0;
+    m_consumedFrames.store(0, std::memory_order_relaxed);
 
     SampleBuffer::Lock sblc(m_sbCapture.getMutex());
     SampleBuffer::Lock sblp(m_sbPlayback.getMutex());
-    m_sbCapture.consume(nullptr, m_sbCapture.avail());
-    m_sbPlayback.consume(nullptr, m_sbPlayback.avail());
+    m_sbCapture.consume(nullptr, m_sbCapture.avail(), true);
+    m_sbPlayback.consume(nullptr, m_sbPlayback.avail(), true);
 
     if (onStopPlaying) {
       onStopPlaying();
@@ -257,8 +267,8 @@ bool Sampler::playSoundInternal(const SoundInfo& sound, bool preview) {
 
   SampleBuffer::Lock sblc(m_sbCapture.getMutex());
   SampleBuffer::Lock sblp(m_sbPlayback.getMutex());
-  m_sbCapture.consume(nullptr, m_sbCapture.avail());
-  m_sbPlayback.consume(nullptr, m_sbPlayback.avail());
+  m_sbCapture.consume(nullptr, m_sbCapture.avail(), true);
+  m_sbPlayback.consume(nullptr, m_sbPlayback.avail(), true);
 
   if (preview) {
     m_state = ePLAYING_PREVIEW;
@@ -267,8 +277,11 @@ bool Sampler::playSoundInternal(const SoundInfo& sound, bool preview) {
   } else {
     m_state = ePLAYING;
     m_sampleProducerThread.setBufferEnabled(&m_sbCapture, true);
+    m_sampleProducerThread.setBufferEnabled(&m_sbPlayback, m_localPlayback);
   }
 
+  m_totalFrames = m_inputFile->outputSamplesEstimation();
+  m_consumedFrames.store(0, std::memory_order_relaxed);
   m_sampleProducerThread.setSource(m_inputFile);
   if (onStartPlaying) {
     onStartPlaying(preview, sound.filename);
@@ -294,4 +307,29 @@ void Sampler::unpausePlayback() {
       onUnpausePlaying();
     }
   }
+}
+
+int Sampler::getDurationMs() const {
+  const int64_t frames = m_totalFrames;
+  if (frames <= 0) return 0;
+  return static_cast<int>(frames * 1000 / 48000);
+}
+
+int Sampler::getPositionMs() const {
+  const int64_t consumed = m_consumedFrames.load(std::memory_order_relaxed);
+  if (consumed <= 0) return 0;
+  return static_cast<int>(consumed * 1000 / 48000);
+}
+
+bool Sampler::seekTo(int posMs) {
+  std::lock_guard<std::mutex> Lock(m_mutex);
+  if (!m_inputFile || m_state == eSILENT) return false;
+  const double seconds = static_cast<double>(posMs) / 1000.0;
+  if (m_inputFile->seek(seconds) != 0) return false;
+  m_consumedFrames.store(static_cast<int64_t>(seconds * 48000), std::memory_order_relaxed);
+  SampleBuffer::Lock sblc(m_sbCapture.getMutex());
+  SampleBuffer::Lock sblp(m_sbPlayback.getMutex());
+  m_sbCapture.consume(nullptr, m_sbCapture.avail(), true);
+  m_sbPlayback.consume(nullptr, m_sbPlayback.avail(), true);
+  return true;
 }

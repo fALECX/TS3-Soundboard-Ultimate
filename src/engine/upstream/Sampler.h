@@ -38,6 +38,9 @@ class Sampler {
   void pausePlayback();
   void unpausePlayback();
   state_e getState() const { return m_state; }
+  int getDurationMs() const;
+  int getPositionMs() const;
+  bool seekTo(int posMs);
 
   std::function<void(bool, const QString&)> onStartPlaying;
   std::function<void()> onStopPlaying;
@@ -67,4 +70,6 @@ class Sampler {
   std::atomic<state_e> m_state;
   bool m_localPlayback;
   bool m_muteMyself;
+  int64_t m_totalFrames;
+  std::atomic<int64_t> m_consumedFrames;
 };

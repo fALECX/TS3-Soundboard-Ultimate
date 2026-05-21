@@ -12,6 +12,8 @@ namespace rpsu {
 
 namespace {
 
+constexpr int kMaxFilenameLengthChars = 80;
+
 Cell cellFromJson(const QJsonValue& value) {
   if (!value.isObject()) {
     return {};
@@ -62,7 +64,7 @@ QString sanitizeFilenameBase(const QString& value) {
   }
 
   sanitized.replace(QRegularExpression(QStringLiteral("[\\x00-\\x1f]")), QStringLiteral("_"));
-  return sanitized.left(80);
+  return sanitized.left(kMaxFilenameLengthChars);
 }
 
 QString ensureUniqueFilename(const QStringList& existingNames, const QString& desiredFilename) {

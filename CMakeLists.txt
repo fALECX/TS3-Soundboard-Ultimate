@@ -2,7 +2,13 @@ cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
-project(rp_soundboard_ultimate_ts3_plugin VERSION 0.3.0 LANGUAGES C CXX)
+project(rp_soundboard_ultimate_ts3_plugin VERSION 0.4.0 LANGUAGES C CXX)
+
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/src/version.h"
+  @ONLY
+)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -24,6 +30,8 @@ set(PLUGIN_RUNTIME_NAME "rp_soundboard_ultimate_runtime")
 set(RPSU_PLUGIN_SUPPORT_SUBDIR "plugins/rp_soundboard_ultimate")
 set(RPSU_PLUGINFILE_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/release" CACHE PATH "Output directory for the final ts3_plugin package")
 option(RPSU_MAKE_PLUGIN_FILE "Create the ts3_plugin file" OFF)
+set(RPSU_YT_DLP_EXE "" CACHE FILEPATH "Path to a yt-dlp.exe binary to bundle with the plugin package")
+option(RPSU_DOWNLOAD_YT_DLP "Download yt-dlp.exe during configure when no local binary is available" ON)
 
 set(RPSU_QRC_FILES
   assets/assets.qrc
@@ -34,6 +42,7 @@ set(PLUGIN_RUNTIME_SOURCES
   src/core/models.cpp
   src/core/storage.cpp
   src/core/youtube_service.cpp
+  src/core/update_checker.cpp
   src/engine/playback_engine.cpp
   src/engine/upstream/SampleBuffer.cpp
   src/engine/upstream/SampleProducerThread.cpp
@@ -56,6 +65,7 @@ set(HEADERS
   src/core/models.h
   src/core/storage.h
   src/core/youtube_service.h
+  src/core/update_checker.h
   src/engine/playback_engine.h
   src/engine/upstream/SampleBuffer.h
   src/engine/upstream/SampleProducer.h
@@ -82,6 +92,7 @@ target_include_directories(${PLUGIN_NAME}
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/pluginsdk/include
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 target_compile_definitions(${PLUGIN_NAME}
@@ -111,6 +122,7 @@ target_include_directories(${PLUGIN_RUNTIME_NAME}
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/pluginsdk/include
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 target_link_libraries(${PLUGIN_RUNTIME_NAME}
@@ -145,6 +157,7 @@ add_executable(rpsu_ui_preview
   src/core/models.cpp
   src/core/storage.cpp
   src/core/youtube_service.cpp
+  src/core/update_checker.cpp
   src/engine/playback_engine.cpp
   src/engine/upstream/SampleBuffer.cpp
   src/engine/upstream/SampleProducerThread.cpp
@@ -184,6 +197,7 @@ target_include_directories(rpsu_ui_preview
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/pluginsdk/include
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 target_link_libraries(rpsu_ui_preview
@@ -271,9 +285,77 @@ if(TARGET Qt${QT_VERSION_MAJOR}::qmake)
 endif()
 
 get_filename_component(RPSU_COMPILER_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
-find_program(RPSU_FFMPEG_EXE ffmpeg.exe)
+set(RPSU_FFMPEG_EXE "" CACHE FILEPATH "Path to ffmpeg.exe to bundle with the plugin package")
+set(RPSU_FFPROBE_EXE "" CACHE FILEPATH "Path to ffprobe.exe to bundle with the plugin package")
+
+if(NOT RPSU_FFMPEG_EXE)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/ffmpeg.exe")
+    set(RPSU_FFMPEG_EXE "${CMAKE_CURRENT_SOURCE_DIR}/resources/ffmpeg.exe")
+  else()
+    find_program(RPSU_FFMPEG_FOUND NAMES ffmpeg.exe ffmpeg)
+    if(RPSU_FFMPEG_FOUND)
+      set(RPSU_FFMPEG_EXE "${RPSU_FFMPEG_FOUND}")
+    endif()
+  endif()
+endif()
+
+if(NOT RPSU_FFPROBE_EXE)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/ffprobe.exe")
+    set(RPSU_FFPROBE_EXE "${CMAKE_CURRENT_SOURCE_DIR}/resources/ffprobe.exe")
+  elseif(RPSU_FFMPEG_EXE)
+    get_filename_component(RPSU_FFMPEG_DIR "${RPSU_FFMPEG_EXE}" DIRECTORY)
+    find_program(RPSU_FFPROBE_FOUND NAMES ffprobe.exe ffprobe HINTS "${RPSU_FFMPEG_DIR}")
+    if(RPSU_FFPROBE_FOUND)
+      set(RPSU_FFPROBE_EXE "${RPSU_FFPROBE_FOUND}")
+    endif()
+  endif()
+endif()
+
+if(NOT RPSU_YT_DLP_EXE)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/yt-dlp.exe")
+    set(RPSU_YT_DLP_EXE "${CMAKE_CURRENT_SOURCE_DIR}/resources/yt-dlp.exe")
+  else()
+    find_program(RPSU_PATH_YT_DLP_EXE NAMES yt-dlp.exe yt-dlp)
+    if(RPSU_PATH_YT_DLP_EXE)
+      set(RPSU_YT_DLP_EXE "${RPSU_PATH_YT_DLP_EXE}")
+    endif()
+  endif()
+endif()
+
+if(NOT RPSU_YT_DLP_EXE AND RPSU_DOWNLOAD_YT_DLP)
+  set(RPSU_DOWNLOADED_YT_DLP_EXE "${CMAKE_CURRENT_BINARY_DIR}/tools/yt-dlp.exe")
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tools")
+  message(STATUS "Downloading yt-dlp.exe for the TeamSpeak plugin package")
+  file(DOWNLOAD
+    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+    "${RPSU_DOWNLOADED_YT_DLP_EXE}"
+    STATUS RPSU_YT_DLP_DOWNLOAD_STATUS
+    TLS_VERIFY ON
+    SHOW_PROGRESS
+  )
+  list(GET RPSU_YT_DLP_DOWNLOAD_STATUS 0 RPSU_YT_DLP_DOWNLOAD_CODE)
+  if(RPSU_YT_DLP_DOWNLOAD_CODE EQUAL 0)
+    set(RPSU_YT_DLP_EXE "${RPSU_DOWNLOADED_YT_DLP_EXE}")
+  else()
+    list(GET RPSU_YT_DLP_DOWNLOAD_STATUS 1 RPSU_YT_DLP_DOWNLOAD_MESSAGE)
+    message(WARNING "Could not download yt-dlp.exe: ${RPSU_YT_DLP_DOWNLOAD_MESSAGE}")
+  endif()
+endif()
+
+if(RPSU_YT_DLP_EXE)
+  install(FILES "${RPSU_YT_DLP_EXE}" DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR} RENAME yt-dlp.exe)
+else()
+  set(RPSU_YT_DLP_MISSING_MESSAGE
+    "yt-dlp.exe was not found and could not be downloaded. Set RPSU_YT_DLP_EXE to a local yt-dlp.exe path, place resources/yt-dlp.exe in the source tree, install yt-dlp.exe on PATH, or enable RPSU_DOWNLOAD_YT_DLP."
+  )
+  if(RPSU_MAKE_PLUGIN_FILE)
+    message(FATAL_ERROR "${RPSU_YT_DLP_MISSING_MESSAGE}")
+  else()
+    message(WARNING "${RPSU_YT_DLP_MISSING_MESSAGE}")
+  endif()
+endif()
+
 install(FILES
-  "${CMAKE_CURRENT_SOURCE_DIR}/resources/yt-dlp.exe"
   "${RPSU_COMPILER_BIN_DIR}/libstdc++-6.dll"
   "${RPSU_COMPILER_BIN_DIR}/libgcc_s_seh-1.dll"
   "${RPSU_COMPILER_BIN_DIR}/libwinpthread-1.dll"
@@ -282,6 +364,9 @@ install(FILES
 )
 if(RPSU_FFMPEG_EXE)
   install(FILES "${RPSU_FFMPEG_EXE}" DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR} OPTIONAL)
+endif()
+if(RPSU_FFPROBE_EXE)
+  install(FILES "${RPSU_FFPROBE_EXE}" DESTINATION ${RPSU_PLUGIN_SUPPORT_SUBDIR} OPTIONAL)
 endif()
 
 install(TARGETS rpsu_ui_preview
