@@ -193,6 +193,8 @@ QJsonObject toJson(const PluginConfig& config) {
   object.insert(QStringLiteral("muteMyselfDuringPlayback"), config.muteMyselfDuringPlayback);
   object.insert(QStringLiteral("showHotkeysOnButtons"), config.showHotkeysOnButtons);
   object.insert(QStringLiteral("globalHotkeysEnabled"), config.globalHotkeysEnabled);
+  object.insert(QStringLiteral("librarySortKey"), config.librarySortKey);
+  object.insert(QStringLiteral("libraryHideAssigned"), config.libraryHideAssigned);
   return object;
 }
 
@@ -265,6 +267,8 @@ PluginConfig configFromJson(const QJsonObject& object) {
   config.muteMyselfDuringPlayback = object.value(QStringLiteral("muteMyselfDuringPlayback")).toBool(false);
   config.showHotkeysOnButtons = object.value(QStringLiteral("showHotkeysOnButtons")).toBool(false);
   config.globalHotkeysEnabled = object.value(QStringLiteral("globalHotkeysEnabled")).toBool(true);
+  config.librarySortKey = object.value(QStringLiteral("librarySortKey")).toString(QStringLiteral("newest"));
+  config.libraryHideAssigned = object.value(QStringLiteral("libraryHideAssigned")).toBool(false);
   return config;
 }
 

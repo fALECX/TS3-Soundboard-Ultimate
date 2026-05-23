@@ -44,6 +44,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSet>
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSlider>
@@ -630,9 +631,9 @@ class YouTubeSearchDialog : public QDialog {
       } else {
         updateLoadingMessage(msg);
       }
-      // Pump all events so the Cancel button stays responsive. Any other
-      // operation entry point is gated by the inFlight_ atomic above and
-      // will simply no-op while a future is running.
+      // Pump all events so the Cancel button stays responsive. Re-entry
+      // into another download/preview is prevented by the inFlight_ atomic
+      // exchange at the top of this helper.
       QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
     }
     auto result = future.get();
@@ -1171,6 +1172,299 @@ class HotkeyInputDialog : public QDialog {
   QPushButton* box2_ = nullptr;
 };
 
+// ---------------------------------------------------------------------------
+// Trim feature: timeline visualization + dialog.
+//
+// TrimTimeline is a custom QWidget that draws a horizontal track with two
+// draggable handles representing the trim-in and trim-out points. The region
+// between the handles is the kept audio; the outer regions are dimmed to
+// represent the audio that will be cut. Times are stored and reported in
+// milliseconds.
+// ---------------------------------------------------------------------------
+
+class TrimTimeline : public QWidget {
+ public:
+  explicit TrimTimeline(int durationMs, int startMs, int endMs, bool darkMode, QWidget* parent = nullptr)
+      : QWidget(parent), durationMs_(qMax(1, durationMs)), darkMode_(darkMode) {
+    startMs_ = qBound(0, startMs, durationMs_);
+    endMs_   = qBound(startMs_, endMs <= 0 ? durationMs_ : endMs, durationMs_);
+    setFixedHeight(48);
+    setMinimumWidth(360);
+    setMouseTracking(true);
+    setCursor(Qt::ArrowCursor);
+  }
+
+  int startMs() const { return startMs_; }
+  int endMs() const { return endMs_; }
+  int durationMs() const { return durationMs_; }
+
+  void setStartMs(int ms) {
+    const int v = qBound(0, ms, endMs_ - kMinSelectionMs);
+    if (v != startMs_) { startMs_ = v; update(); if (onChanged) onChanged(startMs_, endMs_); }
+  }
+  void setEndMs(int ms) {
+    const int v = qBound(startMs_ + kMinSelectionMs, ms, durationMs_);
+    if (v != endMs_) { endMs_ = v; update(); if (onChanged) onChanged(startMs_, endMs_); }
+  }
+  void setPositionMs(int ms) {
+    positionMs_ = qBound(-1, ms, durationMs_);
+    update();
+  }
+
+  std::function<void(int startMs, int endMs)> onChanged;
+
+ protected:
+  void paintEvent(QPaintEvent*) override {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    const QColor trackBg     = darkMode_ ? QColor(0x1f, 0x29, 0x3b) : QColor(0xe5, 0xe8, 0xef);
+    const QColor cutFill     = darkMode_ ? QColor(0x2a, 0x33, 0x46) : QColor(0xcf, 0xd4, 0xde);
+    const QColor keptFill    = QColor(0x3b, 0x82, 0xf6);   // brand accent blue
+    const QColor handleFill  = darkMode_ ? QColor(0xf3, 0xf6, 0xfb) : QColor(0x12, 0x1a, 0x2b);
+    const QColor handleEdge  = QColor(0x60, 0xa5, 0xfa);
+    const QColor cursorColor = QColor(0xfb, 0xbf, 0x24);   // playback head
+
+    const int padX  = kHandleHitWidth / 2;
+    const int trackH = 16;
+    const int trackY = (height() - trackH) / 2;
+    const int trackX = padX;
+    const int trackW = qMax(1, width() - padX * 2);
+
+    QRect trackRect(trackX, trackY, trackW, trackH);
+    p.setPen(Qt::NoPen);
+    p.setBrush(trackBg);
+    p.drawRoundedRect(trackRect, 6, 6);
+
+    const int sx = trackX + msToPx(startMs_);
+    const int ex = trackX + msToPx(endMs_);
+
+    // Outer (cut) regions
+    p.setBrush(cutFill);
+    if (sx > trackX) p.drawRoundedRect(QRect(trackX, trackY, sx - trackX, trackH), 6, 6);
+    if (ex < trackX + trackW) p.drawRoundedRect(QRect(ex, trackY, trackX + trackW - ex, trackH), 6, 6);
+
+    // Kept region
+    p.setBrush(keptFill);
+    p.drawRoundedRect(QRect(sx, trackY, qMax(0, ex - sx), trackH), 6, 6);
+
+    // Playback head
+    if (positionMs_ >= 0) {
+      const int px = trackX + msToPx(positionMs_);
+      p.setPen(QPen(cursorColor, 2));
+      p.drawLine(px, trackY - 4, px, trackY + trackH + 4);
+    }
+
+    // Handles
+    drawHandle(p, sx, handleFill, handleEdge);
+    drawHandle(p, ex, handleFill, handleEdge);
+  }
+
+  void mousePressEvent(QMouseEvent* ev) override {
+    if (ev->button() != Qt::LeftButton) return;
+    const int x = ev->pos().x();
+    const int padX = kHandleHitWidth / 2;
+    const int sx = padX + msToPx(startMs_);
+    const int ex = padX + msToPx(endMs_);
+    const int dStart = std::abs(x - sx);
+    const int dEnd   = std::abs(x - ex);
+    // If the click is clearly nearer one handle, grab it. If both are
+    // close (handles overlap), prefer whichever side of x makes sense:
+    // clicks to the left grab start, clicks to the right grab end.
+    if (dStart <= kHandleHitWidth && dStart <= dEnd) {
+      dragging_ = DragStart;
+    } else if (dEnd <= kHandleHitWidth) {
+      dragging_ = DragEnd;
+    } else {
+      dragging_ = DragNone;
+      return;
+    }
+    setCursor(Qt::SizeHorCursor);
+    updateFromMouse(x);
+  }
+
+  void mouseMoveEvent(QMouseEvent* ev) override {
+    if (dragging_ == DragNone) {
+      // hover affordance
+      const int x = ev->pos().x();
+      const int padX = kHandleHitWidth / 2;
+      const int sx = padX + msToPx(startMs_);
+      const int ex = padX + msToPx(endMs_);
+      const bool nearHandle = std::abs(x - sx) <= kHandleHitWidth || std::abs(x - ex) <= kHandleHitWidth;
+      setCursor(nearHandle ? Qt::SizeHorCursor : Qt::ArrowCursor);
+      return;
+    }
+    updateFromMouse(ev->pos().x());
+  }
+
+  void mouseReleaseEvent(QMouseEvent* ev) override {
+    if (ev->button() != Qt::LeftButton) return;
+    dragging_ = DragNone;
+    setCursor(Qt::ArrowCursor);
+  }
+
+ private:
+  enum DragKind { DragNone, DragStart, DragEnd };
+
+  static constexpr int kHandleHitWidth = 14;
+  static constexpr int kMinSelectionMs = 100;
+
+  int msToPx(int ms) const {
+    const int padX = kHandleHitWidth / 2;
+    const int trackW = qMax(1, width() - padX * 2);
+    return static_cast<int>(static_cast<double>(ms) / durationMs_ * trackW);
+  }
+
+  int pxToMs(int x) const {
+    const int padX = kHandleHitWidth / 2;
+    const int trackW = qMax(1, width() - padX * 2);
+    const int local = qBound(0, x - padX, trackW);
+    return static_cast<int>(static_cast<double>(local) / trackW * durationMs_);
+  }
+
+  void updateFromMouse(int x) {
+    const int ms = pxToMs(x);
+    if (dragging_ == DragStart) setStartMs(ms);
+    else if (dragging_ == DragEnd) setEndMs(ms);
+  }
+
+  void drawHandle(QPainter& p, int x, const QColor& fill, const QColor& edge) {
+    const int trackH = 16;
+    const int trackY = (height() - trackH) / 2;
+    const int handleH = trackH + 16;
+    const int handleW = 8;
+    const QRect r(x - handleW / 2, trackY - 8, handleW, handleH);
+    p.setPen(QPen(edge, 1));
+    p.setBrush(fill);
+    p.drawRoundedRect(r, 3, 3);
+  }
+
+  int durationMs_;
+  int startMs_;
+  int endMs_;
+  int positionMs_ = -1;
+  bool darkMode_;
+  DragKind dragging_ = DragNone;
+};
+
+// Format ms as mm:ss.mmm
+static QString formatMs(int ms) {
+  if (ms < 0) ms = 0;
+  const int totalSec = ms / 1000;
+  const int milli    = ms % 1000;
+  const int min      = totalSec / 60;
+  const int sec      = totalSec % 60;
+  return QString::asprintf("%02d:%02d.%03d", min, sec, milli);
+}
+
+class TrimDialog : public QDialog {
+ public:
+  TrimDialog(const QString& title,
+             const QString& soundId,
+             int durationMs,
+             int initialStartMs,
+             int initialEndMs,
+             bool darkMode,
+             QWidget* parent = nullptr)
+      : QDialog(parent), soundId_(soundId), durationMs_(qMax(1, durationMs)) {
+    setWindowTitle(QStringLiteral("Trim sound"));
+    setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
+    setModal(true);
+    resize(640, 260);
+
+    auto* root = new QVBoxLayout(this);
+    root->setContentsMargins(20, 20, 20, 20);
+    root->setSpacing(14);
+
+    auto* titleLabel = new QLabel(title, this);
+    QFont f = titleLabel->font();
+    f.setBold(true);
+    f.setPointSize(f.pointSize() + 1);
+    titleLabel->setFont(f);
+    titleLabel->setWordWrap(true);
+    root->addWidget(titleLabel);
+
+    // Normalize incoming values: 0 in trimEndMs means "play to end".
+    const int initStart = qBound(0, initialStartMs, durationMs_);
+    const int initEnd   = (initialEndMs <= 0 || initialEndMs > durationMs_) ? durationMs_ : initialEndMs;
+
+    timeline_ = new TrimTimeline(durationMs_, initStart, initEnd, darkMode, this);
+    root->addWidget(timeline_);
+
+    auto* labelsRow = new QHBoxLayout();
+    labelsRow->setSpacing(16);
+    startLabel_  = new QLabel(this);
+    endLabel_    = new QLabel(this);
+    lengthLabel_ = new QLabel(this);
+    for (QLabel* l : { startLabel_, endLabel_, lengthLabel_ }) {
+      l->setStyleSheet(QStringLiteral("font-family: 'Consolas','Cascadia Mono',monospace;"));
+    }
+    labelsRow->addWidget(startLabel_);
+    labelsRow->addWidget(endLabel_);
+    labelsRow->addStretch(1);
+    labelsRow->addWidget(lengthLabel_);
+    root->addLayout(labelsRow);
+
+    auto* actionRow = new QHBoxLayout();
+    actionRow->setSpacing(8);
+    auto* playBtn  = new QPushButton(QStringLiteral("Play Selection"), this);
+    auto* stopBtn  = new QPushButton(QStringLiteral("Stop"), this);
+    auto* resetBtn = new QPushButton(QStringLiteral("Reset"), this);
+    playBtn->setCursor(Qt::PointingHandCursor);
+    stopBtn->setCursor(Qt::PointingHandCursor);
+    resetBtn->setCursor(Qt::PointingHandCursor);
+    actionRow->addWidget(playBtn);
+    actionRow->addWidget(stopBtn);
+    actionRow->addStretch(1);
+    actionRow->addWidget(resetBtn);
+    root->addLayout(actionRow);
+
+    auto* buttonBox = new QDialogButtonBox(
+      QDialogButtonBox::Save | QDialogButtonBox::Cancel, this);
+    root->addWidget(buttonBox);
+
+    auto refreshLabels = [this](int s, int e) {
+      startLabel_->setText(QStringLiteral("Start  %1").arg(formatMs(s)));
+      endLabel_->setText(QStringLiteral("End  %1").arg(formatMs(e)));
+      lengthLabel_->setText(QStringLiteral("Length  %1").arg(formatMs(qMax(0, e - s))));
+    };
+    refreshLabels(timeline_->startMs(), timeline_->endMs());
+    timeline_->onChanged = [refreshLabels](int s, int e) { refreshLabels(s, e); };
+
+    connect(playBtn, &QPushButton::clicked, this, [this]() {
+      if (onPreview) onPreview(soundId_, timeline_->startMs(), normalizedEndMs());
+    });
+    connect(stopBtn, &QPushButton::clicked, this, [this]() {
+      if (onStop) onStop();
+    });
+    connect(resetBtn, &QPushButton::clicked, this, [this]() {
+      timeline_->setStartMs(0);
+      timeline_->setEndMs(durationMs_);
+    });
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+  }
+
+  int startMs() const { return timeline_->startMs(); }
+  // Returns trim-end in the persistence convention: 0 means "play to end",
+  // otherwise the absolute end position in ms.
+  int normalizedEndMs() const {
+    const int e = timeline_->endMs();
+    return (e >= durationMs_) ? 0 : e;
+  }
+
+  std::function<void(const QString&, int, int)> onPreview;
+  std::function<void()> onStop;
+
+ private:
+  QString soundId_;
+  int durationMs_;
+  TrimTimeline* timeline_ = nullptr;
+  QLabel* startLabel_  = nullptr;
+  QLabel* endLabel_    = nullptr;
+  QLabel* lengthLabel_ = nullptr;
+};
+
 }  // anonymous namespace
 
 // ---------------------------------------------------------------------------
@@ -1504,8 +1798,13 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   librarySortCombo_->addItem(QStringLiteral("Duration ↑"),    QStringLiteral("duration_asc"));
   librarySortCombo_->addItem(QStringLiteral("Duration ↓"),    QStringLiteral("duration_desc"));
 
+  libraryHideAssignedCheckbox_ = new QCheckBox(QStringLiteral("Only show unassigned sounds"), libraryToolbar);
+  libraryHideAssignedCheckbox_->setObjectName(QStringLiteral("libraryHideAssignedCheckbox"));
+  libraryHideAssignedCheckbox_->setToolTip(QStringLiteral("Hide sounds that are already placed on any board"));
+
   libraryToolbarLayout->addWidget(librarySearch_);
   libraryToolbarLayout->addWidget(librarySortCombo_);
+  libraryToolbarLayout->addWidget(libraryHideAssignedCheckbox_);
 
   libraryList_  = new QListWidget(libraryPanel);
   libraryList_->setObjectName(QStringLiteral("libraryList"));
@@ -1609,7 +1908,18 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   });
 
   connect(librarySearch_, &QLineEdit::textChanged, this, [this]() { rebuild(); });
-  connect(librarySortCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() { rebuild(); });
+  connect(librarySortCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]() {
+    rebuild();
+    if (!rebuildingUi_ && onLibrarySortChanged) {
+      onLibrarySortChanged(librarySortCombo_->currentData().toString());
+    }
+  });
+  connect(libraryHideAssignedCheckbox_, &QCheckBox::toggled, this, [this](bool checked) {
+    rebuild();
+    if (!rebuildingUi_ && onLibraryHideAssignedChanged) {
+      onLibraryHideAssignedChanged(checked);
+    }
+  });
 
   connect(libraryList_, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
     auto* item = libraryList_->itemAt(pos);
@@ -1631,6 +1941,9 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
     QMenu contextMenu;
     contextMenu.addAction(QStringLiteral("Rename..."), this, [this, soundId]() {
       showRenameDialog(soundId);
+    });
+    contextMenu.addAction(QStringLiteral("Trim..."), this, [this, soundId]() {
+      showTrimDialog(soundId);
     });
     contextMenu.addSeparator();
     contextMenu.addAction(QStringLiteral("Delete sound"), this, [this, soundId, displayName]() {
@@ -1958,6 +2271,41 @@ void MainWindow::showRenameDialog(const QString& soundId) {
   }
 }
 
+void MainWindow::showTrimDialog(const QString& soundId) {
+  for (const SoundRecord& sound : state_.library) {
+    if (sound.soundId != soundId) continue;
+
+    if (sound.durationMs <= 0) {
+      QMessageBox::information(this, QStringLiteral("Trim sound"),
+        QStringLiteral("Could not determine the duration of this sound, so trimming is unavailable."));
+      return;
+    }
+
+    TrimDialog dialog(sound.displayName.isEmpty() ? sound.filename : sound.displayName,
+                      soundId, sound.durationMs,
+                      sound.trimStartMs, sound.trimEndMs,
+                      darkMode_, this);
+
+    dialog.onPreview = [this](const QString& sid, int s, int e) {
+      if (onPreviewSoundWithTrim) onPreviewSoundWithTrim(sid, s, e);
+    };
+    dialog.onStop = [this]() {
+      if (onStopPreview) onStopPreview();
+    };
+
+    if (dialog.exec() == QDialog::Accepted) {
+      if (onSoundTrimChanged) {
+        onSoundTrimChanged(soundId, dialog.startMs(), dialog.normalizedEndMs());
+      }
+    } else {
+      // Cancel: make sure any audition playback stops so the user isn't
+      // left with a half-trimmed sample playing.
+      if (onStopPreview) onStopPreview();
+    }
+    return;
+  }
+}
+
 void MainWindow::handleCellClick(int cellIndex, const QString& soundId) {
   setSelectedCell(cellIndex);
 
@@ -2111,6 +2459,15 @@ void MainWindow::rebuild() {
   pagerLayout_->addStretch(1);
 
   freesoundApiKey_->setText(state_.config.freesoundApiKey);
+  {
+    QSignalBlocker blocker(librarySortCombo_);
+    const int sortIndex = librarySortCombo_->findData(state_.config.librarySortKey);
+    librarySortCombo_->setCurrentIndex(sortIndex >= 0 ? sortIndex : librarySortCombo_->findData(QStringLiteral("newest")));
+  }
+  {
+    QSignalBlocker blocker(libraryHideAssignedCheckbox_);
+    libraryHideAssignedCheckbox_->setChecked(state_.config.libraryHideAssigned);
+  }
   darkMode_ = state_.config.darkMode;
   {
     QSignalBlocker blocker(darkModeButton_);
@@ -2312,9 +2669,20 @@ void MainWindow::rebuild() {
   libraryView.reserve(state_.library.size());
   {
     const QString filter = librarySearch_ ? librarySearch_->text().trimmed().toLower() : QString{};
+    const bool hideAssigned = libraryHideAssignedCheckbox_ && libraryHideAssignedCheckbox_->isChecked();
+    QSet<QString> assignedSoundIds;
+    if (hideAssigned) {
+      for (const BoardRecord& board : state_.boards) {
+        for (const Cell& cell : board.cells) {
+          if (!cell.soundId.isEmpty()) assignedSoundIds.insert(cell.soundId);
+        }
+      }
+    }
     for (const SoundRecord& s : state_.library) {
       const QString displayNameLower = s.displayName.toLower();
       if (!filter.isEmpty() && !displayNameLower.contains(filter))
+        continue;
+      if (hideAssigned && assignedSoundIds.contains(s.soundId))
         continue;
       libraryView.push_back({&s, displayNameLower});
     }

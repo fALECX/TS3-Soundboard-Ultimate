@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2026-05-23
+
+### Added
+- Trim feature: right-click a sound in the library and pick **Trim...** to open a timeline-style dialog with two draggable handles for start and end. Includes "Play Selection" audition, numeric `mm:ss.mmm` readouts, and a Reset button. Trim values are non-destructive metadata stored on the sound record and applied at playback time via FFmpeg `-ss` / `-t`.
+
+### Fixed
+- TeamSpeak could crash when starting a new sound while another was paused. The synchronous FFmpeg decode now runs outside the Sampler's audio mutex so the TS3 audio callback is no longer blocked long enough to trigger TS3's watchdog.
+- Long YouTube downloads (1h+ videos) were aborted after 3 minutes by a fixed wall-clock timeout. Replaced with a stall-based timeout that only kills the download when yt-dlp produces no new output for 2 minutes — so legitimately long downloads finish while hung child processes are still caught.
+- Renaming a sound while it was playing or paused left the old name in the preview bar. The active title now updates live.
+- Trimming a sound that was already playing let the stale region finish out. Playback now stops on save so the next play decodes a fresh PCM segment with the new trim.
+
 ## [Unreleased]
 
 ### Changed

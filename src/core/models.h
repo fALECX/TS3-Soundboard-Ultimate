@@ -56,6 +56,8 @@ struct PluginConfig {
   bool muteMyselfDuringPlayback = false;
   bool showHotkeysOnButtons = false;
   bool globalHotkeysEnabled = true;
+  QString librarySortKey = QStringLiteral("newest");
+  bool libraryHideAssigned = false;
 };
 
 struct AppState {

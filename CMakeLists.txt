@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
-project(rp_soundboard_ultimate_ts3_plugin VERSION 0.5.0 LANGUAGES C CXX)
+project(rp_soundboard_ultimate_ts3_plugin VERSION 0.5.1 LANGUAGES C CXX)
 
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in"
@@ -219,7 +219,7 @@ if(MSVC)
   target_compile_options(rpsu_ui_preview PRIVATE /utf-8)
 endif()
 
-set(RPSU_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(RPSU_PACKAGE_VERSION "v${PROJECT_VERSION}")
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
   execute_process(
     COMMAND git describe --tags
@@ -229,7 +229,15 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
     RESULT_VARIABLE RPSU_GIT_DESCRIBE_RESULT
   )
   if(RPSU_GIT_DESCRIBE_RESULT EQUAL 0)
-    string(STRIP "${RPSU_GIT_VERSION_RAW}" RPSU_PACKAGE_VERSION)
+    string(STRIP "${RPSU_GIT_VERSION_RAW}" RPSU_GIT_DESCRIBE_VERSION)
+    # Only adopt the git-describe string if it already encodes the current
+    # PROJECT_VERSION (e.g. tag "v0.5.1" matches PROJECT_VERSION 0.5.1, or
+    # "v0.5.1-3-gabcdef" extends it). Otherwise we are mid-bump for a not-
+    # yet-tagged release and PROJECT_VERSION is authoritative — using the
+    # stale tag here mislabels the package and the resulting .ts3_plugin.
+    if(RPSU_GIT_DESCRIBE_VERSION MATCHES "^v?${PROJECT_VERSION}([.\\-].*)?$")
+      set(RPSU_PACKAGE_VERSION "${RPSU_GIT_DESCRIBE_VERSION}")
+    endif()
   endif()
 endif()
 

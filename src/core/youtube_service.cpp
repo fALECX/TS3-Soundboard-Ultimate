@@ -34,7 +34,11 @@ constexpr int kPollIntervalMs = 200;
 constexpr int kTailBufSize = 4096;
 constexpr int kSearchTimeoutMs = 20000;
 constexpr int kStartTimeoutMs = 10000;
-constexpr int kDownloadTimeoutMs = 180000;
+// Stall threshold for the full download: if yt-dlp/ffmpeg produce no new
+// output for this long we assume it is hung and kill it. We deliberately
+// do NOT cap total wall-clock time — long videos (1h+) legitimately need
+// several minutes to download + convert and a fixed cap killed those.
+constexpr int kDownloadStallTimeoutMs = 120000;
 constexpr int kPreviewTimeoutMs = 60000;
 
 QString firstLine(const QString& text) {
@@ -311,11 +315,12 @@ bool YouTubeService::downloadAudio(
   // and memory doesn't grow unbounded over long downloads.
   QString tail;
   QString lastErrLine;
-  int elapsedMs = 0;
+  int msSinceLastProgress = 0;
+  bool sawAnyOutput = false;
 
-  auto drain = [&]() {
+  auto drain = [&]() -> bool {
     const QByteArray chunk = process.readAllStandardOutput();
-    if (chunk.isEmpty()) return;
+    if (chunk.isEmpty()) return false;
     tail.append(QString::fromLocal8Bit(chunk));
     if (tail.size() > kTailBufSize) tail = tail.right(kTailBufSize);
     // Track last non-empty line as a candidate error message.
@@ -325,13 +330,18 @@ bool YouTubeService::downloadAudio(
       const QString t = l.trimmed();
       if (!t.isEmpty() && !t.startsWith(QLatin1Char('['))) lastErrLine = t;
     }
+    return true;
   };
 
   while (true) {
     if (process.waitForFinished(kPollIntervalMs)) { drain(); break; }
-    drain();
-
-    elapsedMs += kPollIntervalMs;
+    const bool gotOutput = drain();
+    if (gotOutput) {
+      sawAnyOutput = true;
+      msSinceLastProgress = 0;
+    } else {
+      msSinceLastProgress += kPollIntervalMs;
+    }
 
     if (cancelFlag && cancelFlag->load()) {
       process.kill();
@@ -340,10 +350,17 @@ bool YouTubeService::downloadAudio(
       return false;
     }
 
-    if (elapsedMs >= kDownloadTimeoutMs) {
+    // Only stall-timeout, no wall-clock cap: a 1-hour video legitimately
+    // takes several minutes to download + convert. We only abort if yt-dlp
+    // produced no new output for kDownloadStallTimeoutMs (hung child).
+    if (msSinceLastProgress >= kDownloadStallTimeoutMs) {
       process.kill();
       process.waitForFinished(3000);
-      if (errorMessage) *errorMessage = QStringLiteral("YouTube download timed out.");
+      if (errorMessage) {
+        *errorMessage = sawAnyOutput
+          ? QStringLiteral("YouTube download stalled (no progress for %1s).").arg(kDownloadStallTimeoutMs / 1000)
+          : QStringLiteral("yt-dlp produced no output.");
+      }
       return false;
     }
 
