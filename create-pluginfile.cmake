@@ -1,16 +1,4 @@
-execute_process(
-    COMMAND git describe --tags
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    OUTPUT_VARIABLE gitVersionRaw
-    ERROR_QUIET
-    RESULT_VARIABLE gitDescribeResult
-)
-
-if(gitDescribeResult EQUAL 0)
-    string(STRIP "${gitVersionRaw}" packageVersion)
-else()
-    set(packageVersion "${RPSU_PLUGIN_PACKAGE_VERSION}")
-endif()
+set(packageVersion "${RPSU_PLUGIN_PACKAGE_VERSION}")
 
 if(NOT packageVersion)
     message(FATAL_ERROR "Could not determine plugin package version.")

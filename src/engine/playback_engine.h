@@ -28,6 +28,9 @@ class PlaybackEngine {
   void setMuteMyselfDuringPlayback(bool enabled);
   void stopPlayback();
   bool playSound(const SoundRecord& sound, const QString& soundsDir, QString* errorMessage);
+  // Update the displayed title for the currently active playback (used when
+  // the user renames a sound while it is playing/paused).
+  void setActiveDisplayName(const QString& displayName);
   void pausePlayback();
   void resumePlayback();
   bool isPaused() const;
@@ -57,6 +60,10 @@ class PlaybackEngine {
 
   Sampler sampler_;
   TalkStateManager talkStateManager_;
+  // Title shown in the preview bar for the active playback. Set by
+  // playSound() from the SoundRecord's displayName so the preview reflects
+  // user renames rather than the raw filename.
+  QString activeDisplayName_;
 
 #ifdef RPSU_ENABLE_TS3_ROUTING
   QHash<uint64, int> connectionStatuses_;

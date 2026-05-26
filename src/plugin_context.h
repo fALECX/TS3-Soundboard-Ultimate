@@ -47,6 +47,7 @@ class PluginContext {
         if (positionPollTimer_) positionPollTimer_->start();
       } else {
         if (positionPollTimer_) positionPollTimer_->stop();
+        currentlyPlayingSoundId_.clear();
       }
       updatePreviewUi(title, durationMs, playing);
     };
@@ -202,6 +203,12 @@ class PluginContext {
       window_->onSoundRenamed = [this](const QString& soundId, const QString& displayName) {
         renameSoundDisplay(soundId, displayName);
       };
+      window_->onSoundTrimChanged = [this](const QString& soundId, int startMs, int endMs) {
+        updateSoundTrim(soundId, startMs, endMs);
+      };
+      window_->onPreviewSoundWithTrim = [this](const QString& soundId, int startMs, int endMs) {
+        previewSoundWithTrim(soundId, startMs, endMs);
+      };
       window_->onCellHotkeyChanged = [this](int cellIndex, const QString& hotkey) {
         setCellHotkey(cellIndex, hotkey);
       };
@@ -213,6 +220,14 @@ class PluginContext {
       };
       window_->onDeleteSound = [this](const QString& soundId) {
         deleteSound(soundId);
+      };
+      window_->onLibrarySortChanged = [this](const QString& sortKey) {
+        state_.config.librarySortKey = sortKey;
+        storage_.saveState(state_);
+      };
+      window_->onLibraryHideAssignedChanged = [this](bool enabled) {
+        state_.config.libraryHideAssigned = enabled;
+        storage_.saveState(state_);
       };
     }
 
@@ -303,6 +318,7 @@ class PluginContext {
         sound.playCount += 1;
         sound.lastPlayedAt = nowIso();
         storage_.saveState(state_);
+        currentlyPlayingSoundId_ = soundId;
       }
       if (!started && !error.isEmpty() && window_) {
         window_->setPreviewStatus(QStringLiteral("Playback failed: %1").arg(error), 0, false);
@@ -526,9 +542,80 @@ class PluginContext {
       if (sound.soundId == soundId) {
         sound.displayName = displayName;
         storage_.saveState(state_);
+        // If the renamed sound is currently in the preview bar (playing or
+        // paused), refresh the title live — the Sampler-side callback only
+        // fires on start/stop so it would otherwise keep the old name until
+        // playback restarts.
+        if (soundId == currentlyPlayingSoundId_) {
+          playbackEngine_.setActiveDisplayName(displayName);
+          currentPreviewTitle_ = displayName;
+          if (window_) {
+            window_->setPreviewStatus(
+              displayName,
+              currentPreviewDurationMs_,
+              playbackEngine_.isActive(),
+              playbackEngine_.isPaused());
+          }
+        }
         refreshWindow();
         return;
       }
+    }
+  }
+
+  void updateSoundTrim(const QString& soundId, int trimStartMs, int trimEndMs) {
+    for (SoundRecord& sound : state_.library) {
+      if (sound.soundId != soundId) continue;
+      sound.trimStartMs = qMax(0, trimStartMs);
+      sound.trimEndMs   = qMax(0, trimEndMs);
+      storage_.saveState(state_);
+      // Stop any in-flight playback of this sound so the next play decodes
+      // a fresh PCM segment with the new trim instead of finishing the
+      // stale window from the previous trim values.
+      if (soundId == currentlyPlayingSoundId_) {
+        playbackEngine_.stopPlayback();
+        preview_.stop();
+        currentlyPlayingSoundId_.clear();
+      }
+      refreshWindow();
+      return;
+    }
+  }
+
+  // Play one-shot with override trim values without persisting them, so the
+  // Trim dialog can audition cuts before the user commits with Save.
+  void previewSoundWithTrim(const QString& soundId, int trimStartMs, int trimEndMs) {
+    for (const SoundRecord& sound : state_.library) {
+      if (sound.soundId != soundId) continue;
+
+      SoundRecord override = sound;
+      override.trimStartMs = qMax(0, trimStartMs);
+      override.trimEndMs   = qMax(0, trimEndMs);
+
+      QString error;
+      bool started = false;
+#ifdef RPSU_ENABLE_TS3_ROUTING
+      started = playbackEngine_.playSound(override, storage_.soundsDir(), &error);
+#else
+      const QString filePath = QDir(storage_.soundsDir()).filePath(sound.filename);
+      int previewDurationMs = 0;
+      QString previewError;
+      started = preview_.playFile(sound.soundId, filePath, &previewDurationMs, &previewError);
+      if (!started) error = previewError;
+      if (started) {
+        currentPreviewTitle_ = sound.displayName;
+        currentPreviewDurationMs_ = previewDurationMs;
+        if (positionPollTimer_) positionPollTimer_->start();
+        updatePreviewUi(sound.displayName, previewDurationMs, true);
+      }
+#endif
+      if (started) {
+        currentlyPlayingSoundId_ = soundId;
+      }
+      if (!started && !error.isEmpty() && window_) {
+        window_->setPreviewStatus(QStringLiteral("Preview failed: %1").arg(error), 0, false);
+      }
+      return;
     }
   }
 
@@ -701,6 +788,10 @@ class PluginContext {
   QTimer* positionPollTimer_ = nullptr;
   QString lastPreviewPath_;
   QString currentPreviewTitle_;
+  // Soundboard sound id of the audio currently in the preview bar (playing
+  // or paused). Used to keep the title/trim in sync when the user renames
+  // or re-trims the sound while it is active.
+  QString currentlyPlayingSoundId_;
   int currentPreviewDurationMs_ = 0;
   QString pendingUpdateVersion_;
   QString pendingUpdateUrl_;

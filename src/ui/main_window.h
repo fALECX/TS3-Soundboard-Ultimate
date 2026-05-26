@@ -59,10 +59,17 @@ class MainWindow : public QWidget {
   std::function<void(int rows, int cols)> onActiveBoardSizeChanged;
   std::function<void(int cellIndex, const QString& emoji)> onCellEmojiChanged;
   std::function<void(const QString& soundId, const QString& displayName)> onSoundRenamed;
+  // Persist new trim values for a sound record.
+  std::function<void(const QString& soundId, int trimStartMs, int trimEndMs)> onSoundTrimChanged;
+  // One-shot preview with override trim values (does not persist). Used by
+  // the Trim dialog so the user can audition cuts before saving.
+  std::function<void(const QString& soundId, int trimStartMs, int trimEndMs)> onPreviewSoundWithTrim;
   std::function<void(int cellIndex, const QString& hotkey)> onCellHotkeyChanged;
   std::function<void(const QString& boardId)> onDeleteBoard;
   std::function<void(const QString& boardId, const QString& newName)> onRenameBoard;
   std::function<void(const QString& soundId)> onDeleteSound;
+  std::function<void(const QString& sortKey)> onLibrarySortChanged;
+  std::function<void(bool enabled)> onLibraryHideAssignedChanged;
 
   // Fired whenever preview status or position changes — used by the YouTube
   // dialog to mirror the preview bar without polling.
@@ -80,6 +87,7 @@ class MainWindow : public QWidget {
   void openYouTubeDialog();
   void showRenameDialog(const QString& soundId);
   void showHelpDialog();
+  void showTrimDialog(const QString& soundId);
   QString displayNameForItem(const QListWidgetItem* item) const;
 
   AppState state_;
@@ -97,6 +105,7 @@ class MainWindow : public QWidget {
   QListWidget* libraryList_ = nullptr;
   QLineEdit* librarySearch_ = nullptr;
   QComboBox* librarySortCombo_ = nullptr;
+  QCheckBox* libraryHideAssignedCheckbox_ = nullptr;
   QLabel* statusLabel_ = nullptr;
   QPushButton* dismissUpdateButton_ = nullptr;
   QFrame* previewBar_ = nullptr;

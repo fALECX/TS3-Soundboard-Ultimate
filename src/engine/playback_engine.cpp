@@ -19,10 +19,14 @@ void runtimeLog(const QString& text) {
 
 PlaybackEngine::PlaybackEngine() {
   sampler_.onStartPlaying = [this](bool, const QString& filename) {
-    updatePreviewStatus(QFileInfo(filename).completeBaseName(), sampler_.getDurationMs(), true);
+    const QString title = activeDisplayName_.isEmpty()
+                              ? QFileInfo(filename).completeBaseName()
+                              : activeDisplayName_;
+    updatePreviewStatus(title, sampler_.getDurationMs(), true);
     talkStateManager_.onStartPlaying(false, filename);
   };
   sampler_.onStopPlaying = [this]() {
+    activeDisplayName_.clear();
     updatePreviewStatus(QString(), 0, false);
     talkStateManager_.onStopPlaying();
   };
@@ -62,6 +66,10 @@ void PlaybackEngine::setMuteMyselfDuringPlayback(bool enabled) {
 
 void PlaybackEngine::stopPlayback() {
   sampler_.stopPlayback();
+}
+
+void PlaybackEngine::setActiveDisplayName(const QString& displayName) {
+  activeDisplayName_ = displayName;
 }
 
 void PlaybackEngine::pausePlayback() {
@@ -120,11 +128,13 @@ bool PlaybackEngine::playSound(const SoundRecord& sound, const QString& soundsDi
                  .arg(activeServerConnectionHandlerId_)
                  .arg(sound.displayName, sound.filename));
 #endif
+  activeDisplayName_ = sound.displayName;
   const SoundInfo info = toSoundInfo(sound, soundsDir);
   if (!sampler_.playFile(info)) {
 #ifdef RPSU_ENABLE_TS3_ROUTING
     runtimeLog(QStringLiteral("playSound failed in sampler for %1").arg(sound.displayName));
 #endif
+    activeDisplayName_.clear();
     if (errorMessage) {
       *errorMessage = QStringLiteral("Upstream playback engine could not start the sound.");
     }

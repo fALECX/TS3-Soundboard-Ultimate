@@ -252,15 +252,20 @@ void Sampler::stopSoundInternal() {
 }
 
 bool Sampler::playSoundInternal(const SoundInfo& sound, bool preview) {
+  // Decode the source file BEFORE taking m_mutex. FFmpeg runs synchronously
+  // here and can take noticeable time. The audio mutex is shared with
+  // fetchInputSamples / fetchOutputSamples on the TS3 audio callback thread,
+  // and TS3 crashes the client if those callbacks are blocked too long.
+  InputFile* newFile = CreateInputFileFFmpeg();
+  if (newFile->open(sound.filename.toUtf8().constData(), sound.getStartTime(), sound.getPlayTime()) != 0) {
+    delete newFile;
+    return false;
+  }
+
   std::lock_guard<std::mutex> Lock(m_mutex);
   stopSoundInternal();
 
-  m_inputFile = CreateInputFileFFmpeg();
-  if (m_inputFile->open(sound.filename.toUtf8().constData(), sound.getStartTime(), sound.getPlayTime()) != 0) {
-    delete m_inputFile;
-    m_inputFile = nullptr;
-    return false;
-  }
+  m_inputFile = newFile;
 
   m_soundDbSetting = static_cast<double>(sound.volume);
   setVolumeDb(m_globalDbSettingLocal + m_soundDbSetting);
