@@ -79,6 +79,7 @@ class MainWindow : public QWidget {
   void openCreateBoardDialog();
   void openYouTubeDialog();
   void showRenameDialog(const QString& soundId);
+  void showHelpDialog();
   QString displayNameForItem(const QListWidgetItem* item) const;
 
   AppState state_;
@@ -118,6 +119,7 @@ class MainWindow : public QWidget {
   QSpinBox* rowsSpin_ = nullptr;
   QSpinBox* colsSpin_ = nullptr;
   QToolButton* darkModeButton_ = nullptr;
+  QToolButton* helpButton_ = nullptr;
   QFrame* settingsFrame_ = nullptr;
   int selectedCellIndex_ = -1;
   bool rebuildingUi_ = false;

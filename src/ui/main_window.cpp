@@ -1278,6 +1278,14 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
   darkModeButton_->setCursor(Qt::PointingHandCursor);
   topBar->addWidget(darkModeButton_);
 
+  helpButton_ = new QToolButton(topBarFrame);
+  helpButton_->setObjectName(QStringLiteral("helpButton"));
+  helpButton_->setText(QStringLiteral("?"));
+  helpButton_->setToolTip(QStringLiteral("How to use"));
+  helpButton_->setFixedSize(38, 38);
+  helpButton_->setCursor(Qt::PointingHandCursor);
+  topBar->addWidget(helpButton_);
+
   root->addWidget(topBarFrame);
 
   // ── Status strip ─────────────────────────────────────────────────────────
@@ -1536,6 +1544,8 @@ MainWindow::MainWindow(QWidget* parent) : QWidget(parent) {
     if (onDarkModeChanged) onDarkModeChanged(on);
   });
 
+  connect(helpButton_, &QToolButton::clicked, this, [this]() { showHelpDialog(); });
+
   connect(brandButton, &QToolButton::clicked, this, []() {
     QDesktopServices::openUrl(QUrl(QStringLiteral("https://twitch.tv/fALECX")));
   });
@@ -1720,6 +1730,7 @@ void MainWindow::applyTheme() {
     "#brandButton { border-color: rgba(145,71,255,0.30); background: rgba(145,71,255,0.08); }"
     "#brandButton:hover  { background: rgba(145,71,255,0.20); }"
     "#darkModeButton { font-size: 16px; border-radius: 18px; }"
+    "#helpButton { font-size: 16px; font-weight: 700; border-radius: 18px; }"
 
     "QComboBox { padding: 6px 10px; border: 1px solid %8; border-radius: 8px; background: %15; color: %2; }"
     "QComboBox::drop-down { border: none; }"
@@ -2392,6 +2403,85 @@ void MainWindow::rebuild() {
 
   if (selectedCellIndex_ >= cellCards_.size()) selectedCellIndex_ = -1;
   setSelectedCell(selectedCellIndex_);
+}
+
+void MainWindow::showHelpDialog() {
+  const Theme t = darkMode_ ? darkTheme() : lightTheme();
+
+  QDialog dlg(this);
+  dlg.setWindowTitle(QStringLiteral("How to use — RP Soundboard Ultimate"));
+  dlg.setWindowFlags(dlg.windowFlags() & ~Qt::WindowContextHelpButtonHint);
+  dlg.resize(520, 460);
+  dlg.setStyleSheet(QStringLiteral(
+    "QDialog { background: %1; }"
+    "QLabel  { color: %2; background: transparent; }"
+    "QPushButton { padding: 8px 22px; border: 1px solid %3; border-radius: 8px;"
+    "  background: %4; color: %2; font-weight: 600; }"
+    "QPushButton:hover { background: %5; }"
+  ).arg(t.windowBg, t.textPrimary, t.buttonBorder, t.buttonBg, t.buttonHover));
+
+  auto* root = new QVBoxLayout(&dlg);
+  root->setContentsMargins(24, 20, 24, 20);
+  root->setSpacing(16);
+
+  // ── German section ────────────────────────────────────────────────────────
+  auto* deHeader = new QLabel(
+    QStringLiteral("\U0001F1E9\U0001F1EA  <b style='font-size:15px;'>Anleitung</b>"), &dlg);
+  deHeader->setTextFormat(Qt::RichText);
+  root->addWidget(deHeader);
+
+  const QString deSteps = QStringLiteral(
+    "1. 🎬  Klicke auf <b>YouTube Search</b> oben in der Leiste.<br>"
+    "2. 🔍  Suche nach einem Soundeffekt, z.B. <i>airhorn sound effect</i>.<br>"
+    "3. ▶️  Klicke auf <b>Preview</b> (Play-Symbol) um den Sound zu hören.<br>"
+    "4. ⬇️  Klicke auf <b>Download</b> (Pfeil-Symbol) um ihn herunterzuladen.<br>"
+    "5. 🎵  Wähle einen Sound aus der <b>Bibliothek</b> unten rechts aus,<br>"
+    "       dann klicke auf eine freie <b>Kachel</b> im Board.<br>"
+    "6. 🎤  Klicke auf die <b>Kachel</b> — der Sound läuft durch dein Mikrofon!"
+  );
+  auto* deLabel = new QLabel(deSteps, &dlg);
+  deLabel->setTextFormat(Qt::RichText);
+  deLabel->setWordWrap(true);
+  deLabel->setStyleSheet(QStringLiteral(
+    "QLabel { background: %1; border: 1px solid %2; border-radius: 10px;"
+    "  padding: 14px 16px; font-size: 13px; line-height: 1.6; color: %3; }"
+  ).arg(t.surfaceBg, t.surfaceBorder, t.textPrimary));
+  root->addWidget(deLabel);
+
+  // ── English section ───────────────────────────────────────────────────────
+  auto* enHeader = new QLabel(
+    QStringLiteral("\U0001F1EC\U0001F1E7  <b style='font-size:15px;'>How to use</b>"), &dlg);
+  enHeader->setTextFormat(Qt::RichText);
+  root->addWidget(enHeader);
+
+  const QString enSteps = QStringLiteral(
+    "1. 🎬  Click <b>YouTube Search</b> in the top bar.<br>"
+    "2. 🔍  Search for a sound effect, e.g. <i>airhorn sound effect</i>.<br>"
+    "3. ▶️  Click <b>Preview</b> (play icon) to hear it.<br>"
+    "4. ⬇️  Click <b>Download</b> (arrow icon) to download it.<br>"
+    "5. 🎵  Select a sound from the <b>library</b> (bottom right),<br>"
+    "       then click an empty <b>tile</b> on the board to assign it.<br>"
+    "6. 🎤  Click the <b>tile</b> — the sound plays through your mic!"
+  );
+  auto* enLabel = new QLabel(enSteps, &dlg);
+  enLabel->setTextFormat(Qt::RichText);
+  enLabel->setWordWrap(true);
+  enLabel->setStyleSheet(QStringLiteral(
+    "QLabel { background: %1; border: 1px solid %2; border-radius: 10px;"
+    "  padding: 14px 16px; font-size: 13px; line-height: 1.6; color: %3; }"
+  ).arg(t.surfaceBg, t.surfaceBorder, t.textPrimary));
+  root->addWidget(enLabel);
+
+  root->addStretch(1);
+
+  auto* closeBtn = new QPushButton(QStringLiteral("OK"), &dlg);
+  auto* btnRow = new QHBoxLayout();
+  btnRow->addStretch(1);
+  btnRow->addWidget(closeBtn);
+  root->addLayout(btnRow);
+
+  connect(closeBtn, &QPushButton::clicked, &dlg, &QDialog::accept);
+  dlg.exec();
 }
 
 }  // namespace rpsu
